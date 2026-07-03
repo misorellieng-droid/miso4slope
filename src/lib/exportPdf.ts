@@ -3,6 +3,7 @@ import autoTable from 'jspdf-autotable'
 import { SLICE_COLUMNS } from '../components/slope/SlicesTable'
 import type { CanvasBounds } from '../components/slope/SlopeCanvas'
 import { effectiveNaturalTerrain, groundY } from '../engine/geometry'
+import type { PartialFS } from '../engine/fsDecomposition'
 import type {
   AnalysisMode,
   AnalysisResult,
@@ -33,6 +34,7 @@ export interface ReportData {
   fillZones: FillZone[]
   fillReference: CompactionReference | null
   result: AnalysisResult
+  partialFS: PartialFS | null
   svgElement: SVGSVGElement | null
   bounds: CanvasBounds | null
 }
@@ -223,7 +225,7 @@ function drawLayerPanel(
 }
 
 export async function exportReportToPdf(data: ReportData, fileName = 'miso4slope-relatorio.pdf'): Promise<void> {
-  const { header, mode, method, geometry, layers, fill, fillZones, result, svgElement, bounds } = data
+  const { header, mode, method, geometry, layers, fill, fillZones, result, partialFS, svgElement, bounds } = data
   const terrain = effectiveNaturalTerrain(geometry, mode)
 
   const doc = new jsPDF({ unit: 'mm', format: 'a4' })
@@ -268,7 +270,21 @@ export async function exportReportToPdf(data: ReportData, fileName = 'miso4slope
     margin,
     y + 18
   )
-  y += 26
+  y += 24
+
+  if (partialFS && (partialFS.fsCoesao != null || partialFS.fsAtrito != null)) {
+    doc.setFontSize(8.5)
+    doc.setTextColor(90, 90, 90)
+    doc.text(
+      `FS isolado por parcela (recálculo independente para o mesmo círculo, não soma ao FS acima): ` +
+        `só coesão = ${partialFS.fsCoesao != null ? partialFS.fsCoesao.toFixed(3) : '—'} · ` +
+        `só atrito = ${partialFS.fsAtrito != null ? partialFS.fsAtrito.toFixed(3) : '—'}`,
+      margin,
+      y
+    )
+    doc.setTextColor(0, 0, 0)
+    y += 8
+  }
 
   // imagem do talude (2/3 da largura) + dados das camadas ao lado (1/3)
   if (svgElement) {

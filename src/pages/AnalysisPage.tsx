@@ -15,6 +15,7 @@ import { SlicesTable } from '../components/slope/SlicesTable'
 import { bishopFS } from '../engine/bishop'
 import { felleniusFS } from '../engine/fellenius'
 import { findCriticalCircle, type SearchProgress } from '../engine/search'
+import { computePartialFS, type PartialFS } from '../engine/fsDecomposition'
 import type {
   AnalysisMode,
   AnalysisResult,
@@ -90,6 +91,7 @@ export function AnalysisPage() {
   const [showSondagemImport, setShowSondagemImport] = useState(false)
 
   const [result, setResult] = usePersistedState<AnalysisResult | null>(STORAGE_PREFIX + 'result', null)
+  const [partialFS, setPartialFS] = usePersistedState<PartialFS | null>(STORAGE_PREFIX + 'partialFS', null)
   const [resultSource, setResultSource] = usePersistedState<'search' | 'manual'>(
     STORAGE_PREFIX + 'resultSource',
     'search'
@@ -141,9 +143,13 @@ export function AnalysisPage() {
       )
       setResult(r)
       setResultSource('search')
+      setPartialFS(
+        computePartialFS(method, r.circle, geometry, layers, effectiveFill, coverage, effectiveFillZones, nSlices)
+      )
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro desconhecido na busca do círculo crítico.')
       setResult(null)
+      setPartialFS(null)
     } finally {
       setRunning(false)
     }
@@ -158,10 +164,14 @@ export function AnalysisPage() {
         'Círculo inválido para esta geometria (largura insuficiente, menos de 5 fatias válidas, ou instável numericamente — tente outro xc/yc/R).'
       )
       setResult(null)
+      setPartialFS(null)
       return
     }
     setResult(r)
     setResultSource('manual')
+    setPartialFS(
+      computePartialFS(method, r.circle, geometry, layers, effectiveFill, coverage, effectiveFillZones, nSlices)
+    )
   }
 
   const handleSave = async () => {
@@ -218,6 +228,20 @@ export function AnalysisPage() {
       setMethod(snapshot.method)
       setMode(snapshot.mode)
       setResult(snapshot.result)
+      setPartialFS(
+        snapshot.result
+          ? computePartialFS(
+              snapshot.method,
+              snapshot.result.circle,
+              snapshot.geometry,
+              snapshot.layers,
+              snapshot.mode === 'aterro' ? snapshot.fill : null,
+              snapshot.coverage,
+              snapshot.mode === 'aterro' ? snapshot.fillZones : undefined,
+              snapshot.nSlices
+            )
+          : null
+      )
       setShowLoadList(false)
       setSaveMessage('Análise carregada.')
     } catch (err) {
@@ -244,6 +268,7 @@ export function AnalysisPage() {
         fillZones,
         fillReference,
         result,
+        partialFS,
         svgElement: canvasRef.current?.svg ?? null,
         bounds: canvasRef.current?.bounds ?? null,
       })
@@ -536,7 +561,7 @@ export function AnalysisPage() {
         {/* coluna direita: visualização */}
         <div className="space-y-4">
           <SlopeCanvas ref={canvasRef} geometry={geometry} layers={layers} result={result} mode={mode} />
-          <ResultCard result={result} source={resultSource} />
+          <ResultCard result={result} source={resultSource} partialFS={partialFS} />
           <SlicesTable result={result} />
         </div>
       </div>
