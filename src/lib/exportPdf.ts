@@ -42,10 +42,17 @@ const METHOD_LABELS: Record<StabilityMethod, string> = {
  * Serializa o SVG do desenho do talude (com viewBox mas sem width/height
  * intrínsecos no DOM, já que o layout usa CSS) para um PNG em memória, num
  * canvas offscreen — sem depender de html2canvas, já que o desenho já é um
- * SVG puro (basta rasterizar com uma resolução maior que a tela para ficar
- * nítido no PDF).
+ * SVG puro. O viewBox do desenho está em metros (dezenas, não milhares), então
+ * rasterizar multiplicando essas dimensões por um fator pequeno resulta num
+ * PNG minúsculo (ex.: 90×30px) esticado pra largura da página — daí o
+ * borrão. A resolução do raster tem que ser fixada em pixels de saída
+ * (independente da escala do desenho), com a altura derivada só pela razão
+ * de aspecto do viewBox.
  */
-async function svgToPngDataUrl(svg: SVGSVGElement, scale = 3): Promise<{ dataUrl: string; width: number; height: number }> {
+async function svgToPngDataUrl(
+  svg: SVGSVGElement,
+  targetWidthPx = 2000
+): Promise<{ dataUrl: string; width: number; height: number }> {
   const viewBox = svg.viewBox.baseVal
   const width = viewBox.width || svg.clientWidth
   const height = viewBox.height || svg.clientHeight
@@ -54,6 +61,30 @@ async function svgToPngDataUrl(svg: SVGSVGElement, scale = 3): Promise<{ dataUrl
   clone.setAttribute('width', String(width))
   clone.setAttribute('height', String(height))
   clone.style.maxHeight = ''
+
+  // o desenho usa var(--color-*) para cores (talude, arco crítico, N.A.,
+  // hachuras) — essas variáveis só existem no documento principal. Um
+  // clone serializado como SVG standalone (para virar imagem) não tem
+  // acesso a elas, então qualquer stroke/fill baseado em var() vira
+  // inválido e cai no valor inicial (stroke: none) — o traço some
+  // silenciosamente. Resolve os valores atuais e grava no próprio clone
+  // antes de serializar, para que os var() continuem resolvendo.
+  const computed = getComputedStyle(svg)
+  for (const name of [
+    '--color-text-primary',
+    '--color-text-secondary',
+    '--color-accent-blue',
+    '--color-accent-red',
+    '--color-accent-green',
+    '--color-accent-amber',
+    '--color-border',
+    '--color-bg-elevated',
+    '--color-bg-surface',
+    '--color-brand',
+  ]) {
+    const value = computed.getPropertyValue(name).trim()
+    if (value) clone.style.setProperty(name, value)
+  }
 
   const xml = new XMLSerializer().serializeToString(clone)
   const svgBlob = new Blob([xml], { type: 'image/svg+xml;charset=utf-8' })
@@ -67,13 +98,16 @@ async function svgToPngDataUrl(svg: SVGSVGElement, scale = 3): Promise<{ dataUrl
       el.src = url
     })
 
+    const canvasWidth = targetWidthPx
+    const canvasHeight = Math.round((targetWidthPx * height) / width)
+
     const canvas = document.createElement('canvas')
-    canvas.width = width * scale
-    canvas.height = height * scale
+    canvas.width = canvasWidth
+    canvas.height = canvasHeight
     const ctx = canvas.getContext('2d')!
     ctx.fillStyle = '#ffffff'
-    ctx.fillRect(0, 0, canvas.width, canvas.height)
-    ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+    ctx.fillRect(0, 0, canvasWidth, canvasHeight)
+    ctx.drawImage(img, 0, 0, canvasWidth, canvasHeight)
 
     return { dataUrl: canvas.toDataURL('image/png'), width, height }
   } finally {
