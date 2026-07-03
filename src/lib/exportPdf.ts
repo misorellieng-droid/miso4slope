@@ -39,19 +39,41 @@ const METHOD_LABELS: Record<StabilityMethod, string> = {
 }
 
 /**
- * Serializa o SVG do desenho do talude (com viewBox mas sem width/height
- * intrínsecos no DOM, já que o layout usa CSS) para um PNG em memória, num
- * canvas offscreen — sem depender de html2canvas, já que o desenho já é um
- * SVG puro. O viewBox do desenho está em metros (dezenas, não milhares), então
- * rasterizar multiplicando essas dimensões por um fator pequeno resulta num
- * PNG minúsculo (ex.: 90×30px) esticado pra largura da página — daí o
- * borrão. A resolução do raster tem que ser fixada em pixels de saída
- * (independente da escala do desenho), com a altura derivada só pela razão
- * de aspecto do viewBox.
+ * As fontes padrão do PDF (Helvetica etc.) só cobrem WinAnsiEncoding —
+ * não têm glifos gregos. φ/γ/α saem corrompidos ou em branco sem embutir
+ * uma fonte Unicode (o que infla bastante o arquivo). Mais simples e
+ * confiável: escrever por extenso só nesses três símbolos — o resto do
+ * alfabeto Latin-1 estendido (°, ³, á/ã/ç etc.) já é suportado nativamente.
  */
-async function svgToPngDataUrl(
+function pdfSafe(text: string): string {
+  return text.replace(/φ/g, 'phi').replace(/γ/g, 'gamma').replace(/α/g, 'alpha')
+}
+
+const fmt = (n: number | undefined, digits = 2) => (n == null || !Number.isFinite(n) ? '—' : n.toFixed(digits))
+
+/**
+ * Serializa o SVG do desenho do talude para um JPEG em memória, num canvas
+ * offscreen — sem depender de html2canvas, já que o desenho já é um SVG
+ * puro. Duas pegadinhas resolvidas aqui:
+ *
+ * 1. O viewBox do desenho está em metros (dezenas, não milhares) — rasterizar
+ *    multiplicando essas dimensões por um fator pequeno resulta num raster
+ *    minúsculo esticado pra largura da página (daí o borrão). A resolução
+ *    de saída é fixada em pixels, independente da escala do desenho.
+ * 2. O desenho usa var(--color-*) para cores (talude, arco crítico, N.A.,
+ *    hachuras) — variáveis que só existem no documento principal. Um clone
+ *    serializado como SVG standalone não tem acesso a elas: qualquer
+ *    stroke/fill baseado em var() vira inválido e cai no valor inicial
+ *    (stroke: none), e o traço some silenciosamente. Os valores atuais são
+ *    resolvidos e gravados no próprio clone antes de serializar.
+ *
+ * JPEG (não PNG) porque o raster tem muita borda anti-aliased (linhas
+ * finas, texto) que infla bastante um PNG sem ganho visual real — em
+ * qualidade alta o JPEG fica visualmente idêntico com uma fração do peso.
+ */
+async function svgToJpegDataUrl(
   svg: SVGSVGElement,
-  targetWidthPx = 2000
+  targetWidthPx = 1400
 ): Promise<{ dataUrl: string; width: number; height: number }> {
   const viewBox = svg.viewBox.baseVal
   const width = viewBox.width || svg.clientWidth
@@ -62,13 +84,6 @@ async function svgToPngDataUrl(
   clone.setAttribute('height', String(height))
   clone.style.maxHeight = ''
 
-  // o desenho usa var(--color-*) para cores (talude, arco crítico, N.A.,
-  // hachuras) — essas variáveis só existem no documento principal. Um
-  // clone serializado como SVG standalone (para virar imagem) não tem
-  // acesso a elas, então qualquer stroke/fill baseado em var() vira
-  // inválido e cai no valor inicial (stroke: none) — o traço some
-  // silenciosamente. Resolve os valores atuais e grava no próprio clone
-  // antes de serializar, para que os var() continuem resolvendo.
   const computed = getComputedStyle(svg)
   for (const name of [
     '--color-text-primary',
@@ -109,13 +124,55 @@ async function svgToPngDataUrl(
     ctx.fillRect(0, 0, canvasWidth, canvasHeight)
     ctx.drawImage(img, 0, 0, canvasWidth, canvasHeight)
 
-    return { dataUrl: canvas.toDataURL('image/png'), width, height }
+    return { dataUrl: canvas.toDataURL('image/jpeg', 0.92), width, height }
   } finally {
     URL.revokeObjectURL(url)
   }
 }
 
-const fmt = (n: number | undefined, digits = 2) => (n == null || !Number.isFinite(n) ? '—' : n.toFixed(digits))
+/**
+ * Painel lateral com os dados de cada camada (nome, profundidade adotada no
+ * limite superior/inferior, c'/φ'/γ) — ao lado do desenho, no estilo de uma
+ * coluna de sondagem/perfil geotécnico. Texto puro (não autoTable) porque a
+ * coluna é estreita (1/3 da página) e o layout vertical por camada
+ * aproveita melhor o espaço do que uma tabela larga.
+ */
+function drawLayerPanel(doc: jsPDF, layers: Layer[], x: number, y: number, width: number, mode: AnalysisMode): number {
+  let cy = y
+
+  doc.setFontSize(9)
+  doc.setFont('helvetica', 'bold')
+  doc.setTextColor(0, 0, 0)
+  doc.text(mode === 'corte' ? 'Camadas (corte)' : 'Camadas (fundação)', x, cy)
+  cy += 5.5
+
+  layers.forEach((l, i) => {
+    doc.setFontSize(7.5)
+    doc.setFont('helvetica', 'bold')
+    const nameLines: string[] = doc.splitTextToSize(pdfSafe(l.name), width)
+    doc.text(nameLines, x, cy)
+    cy += nameLines.length * 3.2 + 0.8
+
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(7)
+    const top = l.depth_top != null ? `prof. ${fmt(l.depth_top)} m` : l.y_top != null ? `cota ${fmt(l.y_top)} m` : '—'
+    const base = l.depth_base != null ? `prof. ${fmt(l.depth_base)} m` : l.y_base != null ? `cota ${fmt(l.y_base)} m` : '—'
+    const lines = [`Limite sup.: ${top}`, `Limite inf.: ${base}`, `c' = ${fmt(l.c)} kPa`, `phi' = ${fmt(l.phi)}°`, `gamma = ${fmt(l.gamma)} kN/m³`]
+    for (const line of lines) {
+      doc.text(line, x, cy)
+      cy += 3.4
+    }
+    cy += 1.5
+
+    if (i < layers.length - 1) {
+      doc.setDrawColor(220, 220, 220)
+      doc.line(x, cy - 1, x + width, cy - 1)
+      cy += 1.5
+    }
+  })
+
+  return cy
+}
 
 export async function exportReportToPdf(data: ReportData, fileName = 'miso4slope-relatorio.pdf'): Promise<void> {
   const { header, mode, method, geometry, layers, fill, fillZones, result, svgElement } = data
@@ -164,24 +221,30 @@ export async function exportReportToPdf(data: ReportData, fileName = 'miso4slope
   )
   y += 26
 
-  // imagem do talude
+  // imagem do talude (2/3 da largura) + dados das camadas ao lado (1/3)
   if (svgElement) {
     try {
-      const { dataUrl, width, height } = await svgToPngDataUrl(svgElement)
-      const imgWidth = pageWidth - margin * 2
+      const { dataUrl, width, height } = await svgToJpegDataUrl(svgElement)
+      const gutter = 4
+      const imgWidth = (pageWidth - margin * 2) * (2 / 3)
       const imgHeight = (imgWidth * height) / width
+      const panelX = margin + imgWidth + gutter
+      const panelWidth = pageWidth - margin - panelX
+
       if (y + imgHeight > 270) {
         doc.addPage()
         y = margin
       }
-      doc.addImage(dataUrl, 'PNG', margin, y, imgWidth, imgHeight)
-      y += imgHeight + 8
+
+      doc.addImage(dataUrl, 'JPEG', margin, y, imgWidth, imgHeight)
+      const panelBottom = drawLayerPanel(doc, layers, panelX, y + 4, panelWidth, mode)
+      y = Math.max(y + imgHeight, panelBottom) + 8
     } catch {
       // se a rasterização falhar por qualquer motivo, o relatório segue sem a imagem
     }
   }
 
-  // dados de entrada — geometria
+  // dados de entrada — geometria (camadas já aparecem no painel ao lado da imagem)
   doc.addPage()
   y = margin
   doc.setFontSize(13)
@@ -213,27 +276,6 @@ export async function exportReportToPdf(data: ReportData, fileName = 'miso4slope
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   y = (doc as any).lastAutoTable.finalY + 8
 
-  doc.setFont('helvetica', 'bold')
-  doc.text(mode === 'corte' ? 'Camadas de solo (material natural exposto pelo corte)' : 'Camadas de solo (fundação)', margin, y)
-  y += 2
-  autoTable(doc, {
-    startY: y,
-    margin: { left: margin, right: margin },
-    theme: 'grid',
-    styles: { fontSize: 8, cellPadding: 1.5 },
-    head: [['Camada', "c' (kPa)", "φ' (°)", 'γ (kN/m³)', 'Topo', 'Base']],
-    body: layers.map((l) => [
-      l.name,
-      fmt(l.c),
-      fmt(l.phi),
-      fmt(l.gamma),
-      l.depth_top != null ? `prof. ${fmt(l.depth_top)} m` : l.y_top != null ? `${fmt(l.y_top)} m` : '—',
-      l.depth_base != null ? `prof. ${fmt(l.depth_base)} m` : l.y_base != null ? `${fmt(l.y_base)} m` : '—',
-    ]),
-  })
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  y = (doc as any).lastAutoTable.finalY + 8
-
   if (mode === 'aterro') {
     doc.setFont('helvetica', 'bold')
     doc.text('Material de aterro', margin, y)
@@ -243,7 +285,7 @@ export async function exportReportToPdf(data: ReportData, fileName = 'miso4slope
       margin: { left: margin, right: margin },
       theme: 'grid',
       styles: { fontSize: 8, cellPadding: 1.5 },
-      head: [["c' (kPa)", "φ' (°)", 'γ (kN/m³)']],
+      head: [["c' (kPa)", "phi' (°)", 'gamma (kN/m³)']],
       body: [[fmt(fill.c), fmt(fill.phi), fmt(fill.gamma)]],
     })
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -258,7 +300,7 @@ export async function exportReportToPdf(data: ReportData, fileName = 'miso4slope
         margin: { left: margin, right: margin },
         theme: 'grid',
         styles: { fontSize: 8, cellPadding: 1.5 },
-        head: [['Zona', 'Espessura (m)', 'GC (%)', "c' (kPa)", "φ' (°)", 'γ (kN/m³)']],
+        head: [['Zona', 'Espessura (m)', 'GC (%)', "c' (kPa)", "phi' (°)", 'gamma (kN/m³)']],
         body: fillZones.map((z) => [z.name, fmt(z.thickness), fmt(z.compaction_degree), fmt(z.c), fmt(z.phi), fmt(z.gamma)]),
       })
     }
@@ -278,7 +320,7 @@ export async function exportReportToPdf(data: ReportData, fileName = 'miso4slope
     theme: 'grid',
     styles: { fontSize: 6.5, cellPadding: 1 },
     headStyles: { fillColor: [240, 102, 26] },
-    head: [SLICE_COLUMNS.map((c) => c.label)],
+    head: [SLICE_COLUMNS.map((c) => pdfSafe(c.label))],
     body: result.slices.map((s) =>
       SLICE_COLUMNS.map((c) => (c.key === 'index' ? String(s.index) : (s[c.key] as number).toFixed(c.digits ?? 3)))
     ),
