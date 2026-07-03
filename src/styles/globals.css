@@ -1,0 +1,38 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --color-bg-base: #0d1b2a;
+  --color-bg-surface: #1a2b3c;
+  --color-bg-elevated: #243447;
+  --color-accent-green: #2ecc71;
+  --color-accent-amber: #f39c12;
+  --color-accent-red: #e74c3c;
+  --color-accent-blue: #3498db;
+  --color-text-primary: #ecf0f1;
+  --color-text-secondary: #95a5a6;
+  --color-border: #2c3e50;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  background-color: var(--color-bg-base);
+  color: var(--color-text-primary);
+  font-family: 'Inter', system-ui, sans-serif;
+}
+
+/* remove as setas padrão do input number para não conflitar com o layout compacto das tabelas */
+input[type='number']::-webkit-outer-spin-button,
+input[type='number']::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type='number'] {
+  appearance: textfield;
+}
