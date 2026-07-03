@@ -1,11 +1,12 @@
 import { useMemo } from 'react'
 import { buildProfile, groundY, type Point } from '../../engine/geometry'
-import type { AnalysisResult, Layer, SlopeGeometry } from '../../engine/types'
+import type { AnalysisMode, AnalysisResult, Layer, SlopeGeometry } from '../../engine/types'
 
 interface SlopeCanvasProps {
   geometry: SlopeGeometry
   layers: Layer[]
   result: AnalysisResult | null
+  mode?: AnalysisMode
   showSlices?: boolean
   showGrid?: boolean
   highlightLayer?: number
@@ -54,6 +55,7 @@ export function SlopeCanvas({
   geometry,
   layers,
   result,
+  mode = 'aterro',
   showSlices = true,
   showGrid = true,
   highlightLayer,
@@ -136,26 +138,31 @@ export function SlopeCanvas({
             />
           ))}
 
-          {/* hachura do aterro */}
-          <clipPath id="aterro-clip">
-            <polygon points={toPath(aterroPolygon)} />
-          </clipPath>
-          <g clipPath="url(#aterro-clip)" opacity={0.5}>
-            {Array.from({ length: Math.ceil((width + height) / 2) }).map((_, i) => {
-              const x0 = xMin - height + i * 2
-              return (
-                <line
-                  key={i}
-                  x1={x0}
-                  y1={yMin}
-                  x2={x0 + height}
-                  y2={yMax}
-                  stroke="var(--color-bg-elevated)"
-                  strokeWidth={0.15}
-                />
-              )
-            })}
-          </g>
+          {/* hachura do aterro — só faz sentido quando há material importado; no
+              corte a face exposta já é mostrada pelas cores das próprias camadas */}
+          {mode === 'aterro' && (
+            <>
+              <clipPath id="aterro-clip">
+                <polygon points={toPath(aterroPolygon)} />
+              </clipPath>
+              <g clipPath="url(#aterro-clip)" opacity={0.5}>
+                {Array.from({ length: Math.ceil((width + height) / 2) }).map((_, i) => {
+                  const x0 = xMin - height + i * 2
+                  return (
+                    <line
+                      key={i}
+                      x1={x0}
+                      y1={yMin}
+                      x2={x0 + height}
+                      y2={yMax}
+                      stroke="var(--color-bg-elevated)"
+                      strokeWidth={0.15}
+                    />
+                  )
+                })}
+              </g>
+            </>
+          )}
 
           {/* terreno natural */}
           <polyline

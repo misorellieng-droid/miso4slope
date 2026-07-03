@@ -1,6 +1,8 @@
 import { useState } from 'react'
-import { Calculator, Loader2, Play, Save } from 'lucide-react'
+import { Calculator, FolderOpen, Loader2, Play, Save } from 'lucide-react'
 import { usePersistedState } from '../lib/persist'
+import { supabase } from '../lib/supabase'
+import { listAnalyses, loadAnalysis, saveAnalysis, type SavedAnalysis } from '../lib/analysisStorage'
 import { GeometryForm } from '../components/forms/GeometryForm'
 import { SoilLayerTable } from '../components/forms/SoilLayerTable'
 import { FillForm } from '../components/forms/FillForm'
@@ -13,6 +15,7 @@ import { bishopFS } from '../engine/bishop'
 import { felleniusFS } from '../engine/fellenius'
 import { findCriticalCircle, type SearchProgress } from '../engine/search'
 import type {
+  AnalysisMode,
   AnalysisResult,
   CircleParams,
   CompactionReference,
@@ -59,10 +62,15 @@ const DEFAULT_COVERAGE: FaceCoverage = { type: 'grass', depth: 1.5 }
 
 type Tab = 'geometria' | 'solo' | 'aterro'
 
-const TABS: { id: Tab; label: string }[] = [
+const TABS_ATERRO: { id: Tab; label: string }[] = [
   { id: 'geometria', label: 'Geometria' },
   { id: 'solo', label: 'Solo / Fundação' },
   { id: 'aterro', label: 'Aterro' },
+]
+
+const TABS_CORTE: { id: Tab; label: string }[] = [
+  { id: 'geometria', label: 'Geometria' },
+  { id: 'solo', label: 'Solo / Camadas' },
 ]
 
 const STORAGE_PREFIX = 'miso4slope:analise:'
@@ -96,13 +104,38 @@ export function AnalysisPage() {
   })
   const [nSlices, setNSlices] = usePersistedState(STORAGE_PREFIX + 'nSlices', 40)
   const [method, setMethod] = usePersistedState<StabilityMethod>(STORAGE_PREFIX + 'method', 'bishop')
+  const [mode, setMode] = usePersistedState<AnalysisMode>(STORAGE_PREFIX + 'mode', 'aterro')
+
+  const TABS = mode === 'corte' ? TABS_CORTE : TABS_ATERRO
+  const effectiveFill = mode === 'aterro' ? fill : null
+  const effectiveFillZones = mode === 'aterro' ? fillZones : undefined
+
+  const setModeSafe = (m: AnalysisMode) => {
+    setMode(m)
+    if (m === 'corte' && tab === 'aterro') setTab('geometria')
+  }
+
+  const [saving, setSaving] = useState(false)
+  const [saveMessage, setSaveMessage] = useState<string | null>(null)
+  const [showLoadList, setShowLoadList] = useState(false)
+  const [savedAnalyses, setSavedAnalyses] = useState<SavedAnalysis[]>([])
+  const [loadingList, setLoadingList] = useState(false)
 
   const handleCalculate = async () => {
     setRunning(true)
     setError(null)
     setProgress(null)
     try {
-      const r = await findCriticalCircle(geometry, layers, fill, coverage, fillZones, nSlices, method, setProgress)
+      const r = await findCriticalCircle(
+        geometry,
+        layers,
+        effectiveFill,
+        coverage,
+        effectiveFillZones,
+        nSlices,
+        method,
+        setProgress
+      )
       setResult(r)
       setResultSource('search')
     } catch (err) {
@@ -116,7 +149,7 @@ export function AnalysisPage() {
   const handleCalculateManual = () => {
     setError(null)
     const solve = SOLVERS[method]
-    const r = solve(manualCircle, geometry, layers, fill, coverage, fillZones, nSlices)
+    const r = solve(manualCircle, geometry, layers, effectiveFill, coverage, effectiveFillZones, nSlices)
     if (!r) {
       setError(
         'Círculo inválido para esta geometria (largura insuficiente, menos de 5 fatias válidas, ou instável numericamente — tente outro xc/yc/R).'
@@ -128,6 +161,67 @@ export function AnalysisPage() {
     setResultSource('manual')
   }
 
+  const handleSave = async () => {
+    const projetoNome = window.prompt('Nome do projeto:')
+    if (!projetoNome) return
+    const nomeSecao = window.prompt('Nome da seção/análise:', 'Seção 1')
+    if (!nomeSecao) return
+
+    setSaving(true)
+    setSaveMessage(null)
+    try {
+      await saveAnalysis(projetoNome, nomeSecao, {
+        geometry,
+        layers,
+        fill,
+        coverage,
+        fillReference,
+        fillZones,
+        nSlices,
+        method,
+        mode,
+        result,
+      })
+      setSaveMessage('Análise salva.')
+    } catch (err) {
+      setSaveMessage(err instanceof Error ? `Erro ao salvar: ${err.message}` : 'Erro desconhecido ao salvar.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleOpenLoadList = async () => {
+    setShowLoadList(true)
+    setLoadingList(true)
+    try {
+      setSavedAnalyses(await listAnalyses())
+    } catch (err) {
+      setSaveMessage(err instanceof Error ? `Erro ao listar: ${err.message}` : 'Erro ao listar análises salvas.')
+    } finally {
+      setLoadingList(false)
+    }
+  }
+
+  const handleLoadAnalysis = async (id: string) => {
+    try {
+      const snapshot = await loadAnalysis(id)
+      setGeometry(snapshot.geometry)
+      setLayers(snapshot.layers)
+      setFill(snapshot.fill)
+      setCoverage(snapshot.coverage)
+      setFillReference(snapshot.fillReference)
+      setFillZones(snapshot.fillZones)
+      setNSlices(snapshot.nSlices)
+      setMethod(snapshot.method)
+      setMode(snapshot.mode)
+      setResult(snapshot.result)
+      setShowLoadList(false)
+      setSaveMessage('Análise carregada.')
+    } catch (err) {
+      setSaveMessage(err instanceof Error ? `Erro ao carregar: ${err.message}` : 'Erro ao carregar análise.')
+    }
+  }
+
   const progressPct = progress ? Math.min(100, Math.round((progress.tested / progress.total) * 100)) : 0
 
   return (
@@ -135,7 +229,24 @@ export function AnalysisPage() {
       <div className="mb-6 flex items-center justify-between">
         <div>
           <h1 className="font-sans text-xl font-bold text-text-primary">Nova Análise</h1>
-          <p className="text-sm text-text-secondary">Estabilidade de talude — {METHOD_LABELS[method]}</p>
+          <div className="mt-1 flex items-center gap-3">
+            <div className="flex rounded-md border border-border p-0.5">
+              {(['aterro', 'corte'] as AnalysisMode[]).map((m) => (
+                <button
+                  key={m}
+                  onClick={() => setModeSafe(m)}
+                  className={`rounded px-2.5 py-1 text-xs font-medium capitalize ${
+                    mode === m
+                      ? 'bg-accent-blue text-white'
+                      : 'text-text-secondary hover:text-text-primary'
+                  }`}
+                >
+                  {m}
+                </button>
+              ))}
+            </div>
+            <p className="text-sm text-text-secondary">Estabilidade de talude — {METHOD_LABELS[method]}</p>
+          </div>
           <p className="mt-0.5 text-xs text-text-secondary">
             Salvo automaticamente neste navegador ·{' '}
             <button
@@ -153,13 +264,62 @@ export function AnalysisPage() {
             </button>
           </p>
         </div>
-        <button
-          disabled={!result}
-          className="flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm text-text-secondary hover:text-text-primary disabled:opacity-40"
-        >
-          <Save size={16} /> Salvar Análise
-        </button>
+        <div className="flex items-center gap-2">
+          {saveMessage && <span className="text-xs text-text-secondary">{saveMessage}</span>}
+          <button
+            onClick={handleOpenLoadList}
+            disabled={!supabase}
+            className="flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm text-text-secondary hover:text-text-primary disabled:opacity-40"
+            title={!supabase ? 'Configure VITE_SUPABASE_URL/VITE_SUPABASE_ANON_KEY para habilitar' : undefined}
+          >
+            <FolderOpen size={16} /> Carregar
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={!supabase || saving}
+            className="flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm text-text-secondary hover:text-text-primary disabled:opacity-40"
+            title={!supabase ? 'Configure VITE_SUPABASE_URL/VITE_SUPABASE_ANON_KEY para habilitar' : undefined}
+          >
+            {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+            Salvar Análise
+          </button>
+        </div>
       </div>
+
+      {showLoadList && (
+        <div className="mb-6 rounded-lg border border-border bg-surface p-4">
+          <div className="mb-2 flex items-center justify-between">
+            <div className="text-sm font-medium text-text-primary">Análises salvas</div>
+            <button onClick={() => setShowLoadList(false)} className="text-xs text-text-secondary hover:underline">
+              Fechar
+            </button>
+          </div>
+          {loadingList && <div className="text-sm text-text-secondary">Carregando...</div>}
+          {!loadingList && savedAnalyses.length === 0 && (
+            <div className="text-sm text-text-secondary">Nenhuma análise salva ainda.</div>
+          )}
+          {!loadingList && savedAnalyses.length > 0 && (
+            <ul className="space-y-1 text-sm">
+              {savedAnalyses.map((a) => (
+                <li key={a.id}>
+                  <button
+                    onClick={() => handleLoadAnalysis(a.id)}
+                    className="flex w-full items-center justify-between rounded px-2 py-1.5 text-left hover:bg-elevated"
+                  >
+                    <span>
+                      <span className="text-text-primary">{a.projeto_nome}</span>
+                      <span className="text-text-secondary"> — {a.nome_secao}</span>
+                    </span>
+                    <span className="font-mono text-xs text-text-secondary">
+                      {new Date(a.created_at).toLocaleDateString('pt-BR')}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* coluna esquerda: inputs */}
@@ -181,7 +341,7 @@ export function AnalysisPage() {
               ))}
             </div>
 
-            {tab === 'geometria' && <GeometryForm value={geometry} onChange={setGeometry} />}
+            {tab === 'geometria' && <GeometryForm value={geometry} onChange={setGeometry} mode={mode} />}
             {tab === 'solo' && (
               <div className="space-y-3">
                 {!showSondagemImport && (
@@ -335,7 +495,7 @@ export function AnalysisPage() {
 
         {/* coluna direita: visualização */}
         <div className="space-y-4">
-          <SlopeCanvas geometry={geometry} layers={layers} result={result} />
+          <SlopeCanvas geometry={geometry} layers={layers} result={result} mode={mode} />
           <ResultCard result={result} source={resultSource} />
           <SlicesTable result={result} />
         </div>

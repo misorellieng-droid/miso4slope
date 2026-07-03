@@ -165,6 +165,35 @@ describe('avgSoil — resistência na base, peso integrado ao longo da altura', 
   })
 })
 
+describe('soilAt — modo corte (fill=null, sem material importado)', () => {
+  const cutLayers: Layer[] = [
+    { name: 'Camada 1', y_top: 10, y_base: 2, c: 12, phi: 26, gamma: 17 },
+    { name: 'Camada 2', y_top: 2, y_base: -10, c: 6, phi: 30, gamma: 19 },
+  ]
+
+  test('acima e abaixo do terreno, sempre cai nas camadas naturais (nunca em fill)', () => {
+    expect(soilAt(0, 8, cutLayers, null).c).toBeCloseTo(12)
+    expect(soilAt(0, 1, cutLayers, null).c).toBeCloseTo(6)
+  })
+
+  test('fillZones é ignorado quando fill é null', () => {
+    const fillZones: Layer[] = [{ name: 'Zona', y_top: 10, y_base: 8, c: 99, phi: 40, gamma: 22 }]
+    expect(soilAt(0, 9, cutLayers, null, fillZones).c).toBeCloseTo(12) // cai na camada 1, não na zona
+  })
+
+  test('sem nenhuma camada e sem fill, retorna zeros em vez de quebrar', () => {
+    const s = soilAt(0, 5, [], null)
+    expect(s).toEqual({ c: 0, phi: 0, gamma: 0 })
+  })
+
+  test('avgSoil em modo corte: resistência na base e peso todo em gammaH_fundacao', () => {
+    const s = avgSoil(0, 10, -2, cutLayers, null)
+    expect(s.c).toBeCloseTo(6) // base em y=-2, cai na camada 2
+    expect(s.gammaH_aterro).toBeCloseTo(0)
+    expect(s.gammaH_fundacao).toBeGreaterThan(0)
+  })
+})
+
 describe('splitHeightByGround', () => {
   test('fatia inteira no aterro: h_aterro = h, h_fundacao = 0', () => {
     const r = splitHeightByGround(0, 5, 1, undefined)

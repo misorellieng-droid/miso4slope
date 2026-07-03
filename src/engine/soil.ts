@@ -80,13 +80,13 @@ export function soilAt(
   x: number,
   y: number,
   layers: Layer[],
-  fill: FillMaterial,
+  fill: FillMaterial | null,
   fillZones?: Layer[],
   terrain?: Point[]
 ): SoilParams {
   const groundLevel = groundLevelAt(x, terrain)
 
-  if (y >= groundLevel) {
+  if (y >= groundLevel && fill) {
     if (fillZones) {
       for (const zone of fillZones) {
         const { top, base } = effectiveBounds(zone, groundLevel)
@@ -98,7 +98,11 @@ export function soilAt(
     return { c: fill.c, phi: fill.phi, gamma: fill.gamma }
   }
 
-  if (layers.length === 0) return { c: fill.c, phi: fill.phi, gamma: fill.gamma }
+  // Modo corte (fill=null): não há material importado — mesmo acima da
+  // superfície do terreno de referência (não deveria ocorrer numa geometria
+  // de corte válida, já que o perfil escavado fica sempre no nível do
+  // terreno natural ou abaixo dele), cai direto nas camadas naturais.
+  if (layers.length === 0) return fill ? { c: fill.c, phi: fill.phi, gamma: fill.gamma } : { c: 0, phi: 0, gamma: 0 }
 
   for (const layer of layers) {
     const { top, base } = effectiveBounds(layer, groundLevel)
@@ -185,7 +189,7 @@ function integrateWeight(
   y_top: number,
   y_base: number,
   layers: Layer[],
-  fill: FillMaterial,
+  fill: FillMaterial | null,
   fillZones: Layer[] | undefined,
   terrain: Point[] | undefined
 ): WeightBreakdown {
@@ -204,7 +208,10 @@ function integrateWeight(
     const mid = (segTop + segBase) / 2
     const gamma = soilAt(xm, mid, layers, fill, fillZones, terrain).gamma
 
-    if (mid >= groundLevel) gammaH_aterro += gamma * segH
+    // sem material importado (modo corte), tudo é "fundação" (natural) por
+    // definição — a comparação com groundLevel só faz sentido para separar
+    // aterro de fundação quando existe de fato um aterro
+    if (fill && mid >= groundLevel) gammaH_aterro += gamma * segH
     else gammaH_fundacao += gamma * segH
   }
 
@@ -232,7 +239,7 @@ export function avgSoil(
   y_top: number,
   y_base: number,
   layers: Layer[],
-  fill: FillMaterial,
+  fill: FillMaterial | null,
   coverage?: FaceCoverage,
   fillZones?: Layer[],
   terrain?: Point[]
@@ -257,8 +264,11 @@ export function splitHeightByGround(
   xm: number,
   y_top: number,
   y_base: number,
-  terrain?: Point[]
+  terrain?: Point[],
+  hasFill = true
 ): { h_aterro: number; h_fundacao: number } {
+  if (!hasFill) return { h_aterro: 0, h_fundacao: y_top - y_base }
+
   const groundLevel = groundLevelAt(xm, terrain)
   return {
     h_aterro: Math.max(0, y_top - Math.max(groundLevel, y_base)),

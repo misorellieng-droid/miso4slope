@@ -110,6 +110,14 @@ export interface SliceResult {
 
 export type StabilityMethod = 'bishop' | 'fellenius'
 
+// Aterro: talude construído com material importado (FillMaterial) sobre a
+// fundação natural. Corte: talude escavado direto no terreno natural — não
+// há material importado, a face exposta e tudo abaixo dela são as próprias
+// camadas (layers) já cadastradas. A mesma geometria construtiva (bancadas/
+// bermas, perfil de terreno natural) serve para os dois modos; o que muda é
+// só se um FillMaterial é considerado no cálculo (aterro) ou não (corte).
+export type AnalysisMode = 'aterro' | 'corte'
+
 export interface AnalysisResult {
   FS: number
   circle: CircleParams

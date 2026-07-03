@@ -1,13 +1,14 @@
 import { Plus, Trash2 } from 'lucide-react'
-import type { Point, SlopeGeometry } from '../../engine/types'
+import type { AnalysisMode, Point, SlopeGeometry } from '../../engine/types'
 import { NumberField } from './NumberField'
 
 interface GeometryFormProps {
   value: SlopeGeometry
   onChange: (value: SlopeGeometry) => void
+  mode: AnalysisMode
 }
 
-export function GeometryForm({ value, onChange }: GeometryFormProps) {
+export function GeometryForm({ value, onChange, mode }: GeometryFormProps) {
   const set = <K extends keyof SlopeGeometry>(key: K, v: number) =>
     onChange({ ...value, [key]: v })
 
@@ -45,7 +46,7 @@ export function GeometryForm({ value, onChange }: GeometryFormProps) {
           onChange={(v) => set('berm_width', v)}
         />
         <NumberField
-          label="Altura total do talude"
+          label={mode === 'corte' ? 'Altura total do corte' : 'Altura total do talude'}
           value={value.total_height}
           step={0.1}
           min={0.1}
@@ -69,7 +70,7 @@ export function GeometryForm({ value, onChange }: GeometryFormProps) {
           onChange={(v) => set('gamma_water', v)}
         />
         <NumberField
-          label="Cota do pé do talude (opcional)"
+          label={mode === 'corte' ? 'Cota da plataforma de corte (opcional)' : 'Cota do pé do talude (opcional)'}
           value={value.toe_elevation ?? NaN}
           step={0.01}
           suffix="m"
@@ -82,10 +83,9 @@ export function GeometryForm({ value, onChange }: GeometryFormProps) {
           Perfil do terreno natural (opcional)
         </div>
         <p className="mb-3 text-xs text-text-secondary">
-          Pontos x/y relativos ao pé (0,0), do mais negativo ao mais positivo. Substitui o trecho plano padrão antes
-          do pé e serve de referência de profundidade para camadas de solo definidas por "profundidade do terreno"
-          na aba Solo/Fundação — inclusive por baixo do próprio aterro. Deixe vazio para manter o terreno plano
-          (comportamento padrão).
+          {mode === 'corte'
+            ? 'Pontos x/y relativos ao pé (0,0), do mais negativo ao mais positivo. Representa o terreno original antes do corte — substitui o trecho plano padrão antes do pé e serve de referência de profundidade para as camadas de solo (o próprio material natural exposto pelo corte) definidas por "profundidade do terreno" na aba Solo/Fundação. Deixe vazio para manter o terreno plano (comportamento padrão).'
+            : 'Pontos x/y relativos ao pé (0,0), do mais negativo ao mais positivo. Substitui o trecho plano padrão antes do pé e serve de referência de profundidade para camadas de solo definidas por "profundidade do terreno" na aba Solo/Fundação — inclusive por baixo do próprio aterro. Deixe vazio para manter o terreno plano (comportamento padrão).'}
         </p>
         <div className="space-y-2">
           {terrain.map((p, i) => (

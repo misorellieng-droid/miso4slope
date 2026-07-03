@@ -31,7 +31,7 @@ export function felleniusFS(
   circle: CircleParams,
   geo: SlopeGeometry,
   layers: Layer[],
-  fill: FillMaterial,
+  fill: FillMaterial | null,
   coverage?: FaceCoverage,
   fillZones?: FillZone[],
   n_slices = 40

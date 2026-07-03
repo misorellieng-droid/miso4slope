@@ -52,7 +52,7 @@ async function searchGrid(
   circles: CircleParams[],
   geo: SlopeGeometry,
   layers: Layer[],
-  fill: FillMaterial,
+  fill: FillMaterial | null,
   coverage: FaceCoverage | undefined,
   fillZones: FillZone[] | undefined,
   n_slices: number,
@@ -98,7 +98,7 @@ async function searchGrid(
 export function findCriticalCircle(
   geo: SlopeGeometry,
   layers: Layer[],
-  fill: FillMaterial,
+  fill: FillMaterial | null,
   coverage?: FaceCoverage,
   fillZones?: FillZone[],
   n_slices = 40,

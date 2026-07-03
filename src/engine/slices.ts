@@ -117,7 +117,7 @@ export function buildRawSlices(
   circle: CircleParams,
   geo: SlopeGeometry,
   layers: Layer[],
-  fill: FillMaterial,
+  fill: FillMaterial | null,
   coverage?: FaceCoverage,
   fillZones?: FillZone[],
   n_slices = 40
@@ -143,7 +143,7 @@ export function buildRawSlices(
     if (h <= 0) continue
 
     const soil = avgSoil(xm, y_top, y_base, layers, fill, coverage, resolvedFillZones, geo.natural_terrain)
-    const { h_aterro, h_fundacao } = splitHeightByGround(xm, y_top, y_base, geo.natural_terrain)
+    const { h_aterro, h_fundacao } = splitHeightByGround(xm, y_top, y_base, geo.natural_terrain, fill != null)
     const phi_rad = (soil.phi * Math.PI) / 180
     const W_aterro = soil.gammaH_aterro * b
     const W_fundacao = soil.gammaH_fundacao * b
