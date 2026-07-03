@@ -124,15 +124,26 @@ export const SlopeCanvas = forwardRef<SlopeCanvasHandle, SlopeCanvasProps>(funct
 
   const layerBoundaryElevations = useMemo(() => {
     const EPS = 1e-6
+    // cotas de bancada já rotuladas pelo bloco "cotas" (ex.: o pé, y=0) —
+    // sem isso, uma camada cujo limite coincide com uma bancada (comum no
+    // aterro: o topo da 1ª camada de fundação é sempre o pé) geraria um
+    // rótulo duplicado sobreposto ao mesmo ponto.
+    const benchYs = profile.slice(toeIndex, crestIndex + 1).map((p) => p.y)
     const ys: number[] = []
     for (const layer of layers) {
       const { top, base } = layerBoundaryY(layer, xMin, refTerrain)
       for (const y of [top, base]) {
-        if (Number.isFinite(y) && !ys.some((existing) => Math.abs(existing - y) < EPS)) ys.push(y)
+        if (
+          Number.isFinite(y) &&
+          !ys.some((existing) => Math.abs(existing - y) < EPS) &&
+          !benchYs.some((b) => Math.abs(b - y) < EPS)
+        ) {
+          ys.push(y)
+        }
       }
     }
     return ys.sort((a, b) => b - a)
-  }, [layers, xMin, refTerrain])
+  }, [layers, xMin, refTerrain, profile, toeIndex, crestIndex])
 
   const arcPoints: Point[] = useMemo(() => {
     if (!result) return []
