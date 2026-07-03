@@ -299,20 +299,19 @@ export const SlopeCanvas = forwardRef<SlopeCanvasHandle, SlopeCanvasProps>(funct
                       height={r.top - r.base}
                       fill={colorForSegment(r.key)}
                       opacity={0.45}
-                      stroke={colorForSegment(r.key)}
-                      strokeOpacity={0.6}
-                      strokeWidth={0.05}
                     />
                   ))}
+                  {/* faixa vertical da lamela — limite esquerdo/direito bem marcado,
+                      pra deixar claro onde cada fatia da tabela está posicionada */}
                   <rect
                     x={s.xm - s.b / 2}
                     y={s.y_base}
                     width={s.b}
                     height={s.h}
                     fill="none"
-                    stroke="#F1C40F"
-                    strokeOpacity={0.5}
-                    strokeWidth={0.08}
+                    stroke="var(--color-text-primary)"
+                    strokeOpacity={0.55}
+                    strokeWidth={0.12}
                   />
                 </g>
               )
