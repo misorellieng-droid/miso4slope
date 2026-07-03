@@ -35,7 +35,7 @@ export function ResultCard({ result, source = 'search' }: ResultCardProps) {
     <div className="rounded-lg border border-border bg-surface p-4">
       <div className="flex items-center justify-between text-xs font-medium uppercase tracking-wide text-text-secondary">
         <span>Fator de Segurança</span>
-        <span className="normal-case text-accent-blue">{METHOD_LABELS[result.method]}</span>
+        <span className="normal-case text-brand">{METHOD_LABELS[result.method]}</span>
       </div>
       <div className="font-mono text-4xl font-bold" style={{ color }}>
         {fmt(result.FS, 3)}

@@ -1,6 +1,6 @@
-import { buildProfile, groundY } from './geometry'
+import { buildProfile, effectiveNaturalTerrain, groundY } from './geometry'
 import { avgSoil, resolveFillZones, splitHeightByGround } from './soil'
-import type { CircleParams, FaceCoverage, FillMaterial, FillZone, Layer, SlopeGeometry } from './types'
+import type { AnalysisMode, CircleParams, FaceCoverage, FillMaterial, FillZone, Layer, SlopeGeometry } from './types'
 
 const SWEEP_POINTS = 2000
 const MIN_ARC_WIDTH = 3 // m
@@ -122,7 +122,8 @@ export function buildRawSlices(
   fillZones?: FillZone[],
   n_slices = 40
 ): BuiltSlices | null {
-  const profile = buildProfile(geo)
+  const mode: AnalysisMode = fill == null ? 'corte' : 'aterro'
+  const profile = buildProfile(geo, mode)
   const range = findValidRange(circle, profile)
   if (!range) return null
 
@@ -131,6 +132,7 @@ export function buildRawSlices(
   const gammaWater = geo.gamma_water ?? 9.81
   const waterY = -geo.water_table_depth
   const resolvedFillZones = fillZones?.length ? resolveFillZones(fillZones, geo.total_height) : undefined
+  const refTerrain = effectiveNaturalTerrain(geo, mode)
 
   const raw: RawSlice[] = []
   for (let i = 1; i <= n_slices; i++) {
@@ -142,8 +144,8 @@ export function buildRawSlices(
     const h = y_top - y_base
     if (h <= 0) continue
 
-    const soil = avgSoil(xm, y_top, y_base, layers, fill, coverage, resolvedFillZones, geo.natural_terrain)
-    const { h_aterro, h_fundacao } = splitHeightByGround(xm, y_top, y_base, geo.natural_terrain, fill != null)
+    const soil = avgSoil(xm, y_top, y_base, layers, fill, coverage, resolvedFillZones, refTerrain)
+    const { h_aterro, h_fundacao } = splitHeightByGround(xm, y_top, y_base, refTerrain, fill != null)
     const phi_rad = (soil.phi * Math.PI) / 180
     const W_aterro = soil.gammaH_aterro * b
     const W_fundacao = soil.gammaH_fundacao * b

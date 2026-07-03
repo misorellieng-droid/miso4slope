@@ -130,7 +130,7 @@ export function SoilLayerTable({ value, onChange }: SoilLayerTableProps) {
                       value={layer[field]}
                       onChange={(e) => update(i, { [field]: e.target.valueAsNumber })}
                       className={`w-20 rounded bg-elevated px-2 py-1 text-text-primary focus:outline-none ${
-                        fromSpt ? 'border-l-2 border-accent-blue' : ''
+                        fromSpt ? 'border-l-2 border-brand' : ''
                       }`}
                       title={fromSpt ? 'Calculado pela correlação com N_SPT — editável, sua alteração manual prevalece' : undefined}
                     />
@@ -148,7 +148,7 @@ export function SoilLayerTable({ value, onChange }: SoilLayerTableProps) {
               </tr>
               {(estimate || depthMode) && (
                 <tr>
-                  <td colSpan={10} className="pb-1 pl-2 font-sans text-xs text-accent-blue">
+                  <td colSpan={10} className="pb-1 pl-2 font-sans text-xs text-brand">
                     {depthMode && 'Medido a partir do terreno natural local (acompanha a topografia). '}
                     {estimate?.classification}
                   </td>
@@ -161,7 +161,7 @@ export function SoilLayerTable({ value, onChange }: SoilLayerTableProps) {
       </table>
       <button
         onClick={add}
-        className="mt-2 flex items-center gap-1 text-xs text-accent-blue hover:underline"
+        className="mt-2 flex items-center gap-1 text-xs text-brand hover:underline"
       >
         <Plus size={14} /> Adicionar camada
       </button>

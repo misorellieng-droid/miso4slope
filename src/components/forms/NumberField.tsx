@@ -13,11 +13,11 @@ export function NumberField({ label, value, onChange, step = 0.01, min, suffix, 
     <label className="flex flex-col gap-1">
       <span className="text-xs text-text-secondary">
         {label}
-        {computed && <span className="ml-1 text-accent-blue">(calculado)</span>}
+        {computed && <span className="ml-1 text-brand">(calculado)</span>}
       </span>
       <div
         className={`flex items-center gap-2 rounded-md border bg-elevated px-2 py-1.5 ${
-          computed ? 'border-border border-l-2 border-l-accent-blue' : 'border-border'
+          computed ? 'border-border border-l-2 border-l-brand' : 'border-border'
         }`}
         title={computed ? 'Calculado automaticamente pelo sistema — editável, sua alteração manual prevalece' : undefined}
       >

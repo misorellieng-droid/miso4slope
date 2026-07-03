@@ -194,6 +194,44 @@ describe('soilAt — modo corte (fill=null, sem material importado)', () => {
   })
 })
 
+describe('soilAt — corte com camadas por profundidade e sem terreno customizado', () => {
+  // reproduz o cenário relatado: corte de ~19m, duas camadas cadastradas por
+  // profundidade do terreno (0-6m e 6-30m), sem nenhum ponto de terreno
+  // natural informado. Sem uma referência de profundidade coerente com a
+  // crista, as duas camadas ficariam "penduradas" perto de y=0 (o pé/
+  // plataforma) e nenhuma fatia do talude (que fica bem acima disso)
+  // encontraria camada nenhuma — caindo sempre no fallback da última camada.
+  const totalHeight = 19
+  const depthLayers: Layer[] = [
+    { name: 'Argila porosa (mole)', depth_top: 0, depth_base: 6, c: 8, phi: 20, gamma: 16 },
+    { name: 'Argila porosa (muito rija)', depth_top: 6, depth_base: 30, c: 40, phi: 28, gamma: 19 },
+  ]
+  // mesma referência que effectiveNaturalTerrain produziria para este corte
+  const refTerrain: Point[] = [
+    { x: -1e6, y: totalHeight },
+    { x: 1e6, y: totalHeight },
+  ]
+
+  test('sem referência de terreno (comportamento antigo), a camada rasa nunca é alcançada perto da crista', () => {
+    // y=17 (perto da crista, dentro dos 6m de profundidade da camada 1 a
+    // partir de y=19) cairia fora do alcance de ambas as camadas se a
+    // referência for y=0 — reproduz o bug relatado
+    expect(soilAt(0, 17, depthLayers, null).c).not.toBeCloseTo(8)
+  })
+
+  test('com a referência na crista, cada profundidade cai na camada certa', () => {
+    expect(soilAt(0, 17, depthLayers, null, undefined, refTerrain).c).toBeCloseTo(8) // 2m de profundidade → camada 1
+    expect(soilAt(0, 10, depthLayers, null, undefined, refTerrain).c).toBeCloseTo(40) // 9m de profundidade → camada 2
+  })
+
+  test('avgSoil também usa a camada certa na base de cada fatia, com a referência correta', () => {
+    const nearCrest = avgSoil(0, 19, 15, depthLayers, null, undefined, undefined, refTerrain)
+    expect(nearCrest.c).toBeCloseTo(8)
+    const deeper = avgSoil(0, 19, 5, depthLayers, null, undefined, undefined, refTerrain)
+    expect(deeper.c).toBeCloseTo(40)
+  })
+})
+
 describe('splitHeightByGround', () => {
   test('fatia inteira no aterro: h_aterro = h, h_fundacao = 0', () => {
     const r = splitHeightByGround(0, 5, 1, undefined)

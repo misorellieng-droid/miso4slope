@@ -101,7 +101,7 @@ export function GeometryForm({ value, onChange, mode }: GeometryFormProps) {
               </button>
             </div>
           ))}
-          <button onClick={addPoint} className="flex items-center gap-1 text-xs text-accent-blue hover:underline">
+          <button onClick={addPoint} className="flex items-center gap-1 text-xs text-brand hover:underline">
             <Plus size={14} /> Adicionar ponto
           </button>
         </div>

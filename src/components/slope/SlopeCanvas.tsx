@@ -1,5 +1,5 @@
-import { useMemo } from 'react'
-import { buildProfile, groundY, type Point } from '../../engine/geometry'
+import { forwardRef, useMemo } from 'react'
+import { buildProfile, effectiveNaturalTerrain, groundY, type Point } from '../../engine/geometry'
 import type { AnalysisMode, AnalysisResult, Layer, SlopeGeometry } from '../../engine/types'
 
 interface SlopeCanvasProps {
@@ -51,16 +51,12 @@ function layerOutline(
   return [...top, ...base.reverse()]
 }
 
-export function SlopeCanvas({
-  geometry,
-  layers,
-  result,
-  mode = 'aterro',
-  showSlices = true,
-  showGrid = true,
-  highlightLayer,
-}: SlopeCanvasProps) {
-  const profile = useMemo(() => buildProfile(geometry), [geometry])
+export const SlopeCanvas = forwardRef<SVGSVGElement, SlopeCanvasProps>(function SlopeCanvas(
+  { geometry, layers, result, mode = 'aterro', showSlices = true, showGrid = true, highlightLayer },
+  svgRef
+) {
+  const profile = useMemo(() => buildProfile(geometry, mode), [geometry, mode])
+  const refTerrain = useMemo(() => effectiveNaturalTerrain(geometry, mode), [geometry, mode])
 
   const toeIndex = 1
   const crestIndex = profile.length - 2 // último ponto antes do trecho plano da plataforma
@@ -72,7 +68,7 @@ export function SlopeCanvas({
     let xMax = profile[crestIndex].x
     const layerBottom = layers.length
       ? Math.min(
-          ...layers.map((l) => Math.min(...layerOutline(l, xMin, xMax, geometry.natural_terrain).map((p) => p.y)))
+          ...layers.map((l) => Math.min(...layerOutline(l, xMin, xMax, refTerrain).map((p) => p.y)))
         )
       : -5
     let yMin = Math.min(0, layerBottom, waterY)
@@ -90,7 +86,7 @@ export function SlopeCanvas({
       yMin: yMin - MARGIN_Y,
       yMax: yMax + MARGIN_Y,
     }
-  }, [profile, layers, waterY, result, toeIndex, crestIndex, geometry.natural_terrain])
+  }, [profile, layers, waterY, result, toeIndex, crestIndex, refTerrain])
 
   const { xMin, xMax, yMin, yMax } = bounds
   const width = xMax - xMin
@@ -118,8 +114,9 @@ export function SlopeCanvas({
   }, [profile, toeIndex, crestIndex])
 
   return (
-    <div className="relative w-full overflow-hidden rounded-lg border border-border bg-base">
+    <div className="relative w-full overflow-hidden rounded-lg border border-border bg-surface">
       <svg
+        ref={svgRef}
         viewBox={`0 0 ${width} ${height}`}
         preserveAspectRatio="xMidYMid meet"
         className="h-auto w-full"
@@ -130,7 +127,7 @@ export function SlopeCanvas({
           {layers.map((layer, i) => (
             <polygon
               key={layer.id ?? i}
-              points={toPath(layerOutline(layer, xMin, xMax, geometry.natural_terrain))}
+              points={toPath(layerOutline(layer, xMin, xMax, refTerrain))}
               fill={LAYER_COLORS[i % LAYER_COLORS.length]}
               opacity={highlightLayer === i ? 0.35 : 0.12}
               stroke={highlightLayer === i ? LAYER_COLORS[i % LAYER_COLORS.length] : 'none'}
@@ -155,7 +152,7 @@ export function SlopeCanvas({
                       y1={yMin}
                       x2={x0 + height}
                       y2={yMax}
-                      stroke="var(--color-bg-elevated)"
+                      stroke="var(--color-text-secondary)"
                       strokeWidth={0.15}
                     />
                   )
@@ -302,7 +299,7 @@ export function SlopeCanvas({
       )}
     </div>
   )
-}
+})
 
 // exporta para reaproveitar interpolação de terreno em overlays externos, se necessário
 export { groundY }

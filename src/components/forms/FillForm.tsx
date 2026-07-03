@@ -131,14 +131,14 @@ export function FillForm({
               <button
                 type="button"
                 onClick={() => setReference({ n_spt: undefined, soil_class: undefined })}
-                className={referenceMode === 'manual' ? 'font-medium text-accent-blue underline' : 'text-text-secondary'}
+                className={referenceMode === 'manual' ? 'font-medium text-brand underline' : 'text-text-secondary'}
               >
                 Valores diretos (laboratório)
               </button>
               <button
                 type="button"
                 onClick={() => setReferenceFromSPT({ n_spt: reference?.n_spt ?? 10, soil_class: reference?.soil_class ?? 'coesivo' })}
-                className={referenceMode === 'spt' ? 'font-medium text-accent-blue underline' : 'text-text-secondary'}
+                className={referenceMode === 'spt' ? 'font-medium text-brand underline' : 'text-text-secondary'}
               >
                 Por N_SPT da jazida
               </button>
@@ -193,7 +193,7 @@ export function FillForm({
                     </select>
                   </label>
                 </div>
-                <div className="text-xs text-accent-blue">
+                <div className="text-xs text-brand">
                   {estimateFromSPT(reference!.n_spt!, reference!.soil_class!).classification} → c'=
                   {reference!.c.toFixed(1)}kPa, φ'={reference!.phi.toFixed(1)}°, γ={reference!.gamma.toFixed(1)}kN/m³
                 </div>
@@ -347,7 +347,7 @@ export function FillForm({
             </div>
           </div>
         ))}
-        <button onClick={addZone} className="flex items-center gap-1 text-xs text-accent-blue hover:underline">
+        <button onClick={addZone} className="flex items-center gap-1 text-xs text-brand hover:underline">
           <Plus size={14} /> Adicionar zona
         </button>
       </div>

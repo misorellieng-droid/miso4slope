@@ -11,6 +11,8 @@ export default {
         'accent-amber': 'var(--color-accent-amber)',
         'accent-red': 'var(--color-accent-red)',
         'accent-blue': 'var(--color-accent-blue)',
+        brand: 'var(--color-brand)',
+        'brand-dark': 'var(--color-brand-dark)',
         'text-primary': 'var(--color-text-primary)',
         'text-secondary': 'var(--color-text-secondary)',
         border: 'var(--color-border)',

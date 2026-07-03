@@ -3,16 +3,23 @@
 @tailwind utilities;
 
 :root {
-  --color-bg-base: #0d1b2a;
-  --color-bg-surface: #1a2b3c;
-  --color-bg-elevated: #243447;
-  --color-accent-green: #2ecc71;
-  --color-accent-amber: #f39c12;
-  --color-accent-red: #e74c3c;
+  --color-bg-base: #f4f5f7;
+  --color-bg-surface: #ffffff;
+  --color-bg-elevated: #f2f3f5;
+  --color-accent-green: #16a34a;
+  --color-accent-amber: #d97706;
+  --color-accent-red: #dc2626;
   --color-accent-blue: #3498db;
-  --color-text-primary: #ecf0f1;
-  --color-text-secondary: #95a5a6;
-  --color-border: #2c3e50;
+  --color-text-primary: #1f2430;
+  --color-text-secondary: #6b7280;
+  --color-border: #e5e7eb;
+
+  /* identidade MISO4ENG: laranja como cor primária de marca (menu lateral,
+     ações principais, estados ativos) — accent-blue fica reservado para uso
+     técnico/informativo (ex.: linha do N.A. no desenho do talude), não para
+     UI de marca */
+  --color-brand: #f0661a;
+  --color-brand-dark: #d8550a;
 }
 
 html,

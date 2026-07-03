@@ -1,8 +1,9 @@
-import { useState } from 'react'
-import { Calculator, FolderOpen, Loader2, Play, Save } from 'lucide-react'
+import { useRef, useState } from 'react'
+import { Calculator, FileDown, FolderOpen, Loader2, Play, Save } from 'lucide-react'
 import { usePersistedState } from '../lib/persist'
 import { supabase } from '../lib/supabase'
 import { listAnalyses, loadAnalysis, saveAnalysis, type SavedAnalysis } from '../lib/analysisStorage'
+import { exportReportToPdf } from '../lib/exportPdf'
 import { GeometryForm } from '../components/forms/GeometryForm'
 import { SoilLayerTable } from '../components/forms/SoilLayerTable'
 import { FillForm } from '../components/forms/FillForm'
@@ -120,6 +121,8 @@ export function AnalysisPage() {
   const [showLoadList, setShowLoadList] = useState(false)
   const [savedAnalyses, setSavedAnalyses] = useState<SavedAnalysis[]>([])
   const [loadingList, setLoadingList] = useState(false)
+  const [exportingPdf, setExportingPdf] = useState(false)
+  const svgRef = useRef<SVGSVGElement>(null)
 
   const handleCalculate = async () => {
     setRunning(true)
@@ -222,6 +225,34 @@ export function AnalysisPage() {
     }
   }
 
+  const handleExportPdf = async () => {
+    if (!result) return
+    const projeto = window.prompt('Nome do projeto:', '') ?? ''
+    const secao = window.prompt('Nome da seção/análise:', 'Seção 1') ?? ''
+    const responsavel = window.prompt('Responsável técnico:', '') ?? ''
+
+    setExportingPdf(true)
+    try {
+      await exportReportToPdf({
+        header: { projeto, secao, responsavel },
+        mode,
+        method,
+        geometry,
+        layers,
+        fill,
+        coverage,
+        fillZones,
+        fillReference,
+        result,
+        svgElement: svgRef.current,
+      })
+    } catch (err) {
+      setError(err instanceof Error ? `Erro ao exportar PDF: ${err.message}` : 'Erro ao exportar PDF.')
+    } finally {
+      setExportingPdf(false)
+    }
+  }
+
   const progressPct = progress ? Math.min(100, Math.round((progress.tested / progress.total) * 100)) : 0
 
   return (
@@ -237,7 +268,7 @@ export function AnalysisPage() {
                   onClick={() => setModeSafe(m)}
                   className={`rounded px-2.5 py-1 text-xs font-medium capitalize ${
                     mode === m
-                      ? 'bg-accent-blue text-white'
+                      ? 'bg-brand text-white'
                       : 'text-text-secondary hover:text-text-primary'
                   }`}
                 >
@@ -258,7 +289,7 @@ export function AnalysisPage() {
                   location.reload()
                 }
               }}
-              className="text-accent-blue hover:underline"
+              className="text-brand hover:underline"
             >
               limpar dados salvos
             </button>
@@ -266,6 +297,14 @@ export function AnalysisPage() {
         </div>
         <div className="flex items-center gap-2">
           {saveMessage && <span className="text-xs text-text-secondary">{saveMessage}</span>}
+          <button
+            onClick={handleExportPdf}
+            disabled={!result || exportingPdf}
+            className="flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm text-text-secondary hover:text-text-primary disabled:opacity-40"
+          >
+            {exportingPdf ? <Loader2 size={16} className="animate-spin" /> : <FileDown size={16} />}
+            Exportar PDF
+          </button>
           <button
             onClick={handleOpenLoadList}
             disabled={!supabase}
@@ -332,7 +371,7 @@ export function AnalysisPage() {
                   onClick={() => setTab(t.id)}
                   className={`border-b-2 px-3 py-2 text-sm ${
                     tab === t.id
-                      ? 'border-accent-blue text-text-primary'
+                      ? 'border-brand text-text-primary'
                       : 'border-transparent text-text-secondary hover:text-text-primary'
                   }`}
                 >
@@ -347,7 +386,7 @@ export function AnalysisPage() {
                 {!showSondagemImport && (
                   <button
                     onClick={() => setShowSondagemImport(true)}
-                    className="text-xs text-accent-blue hover:underline"
+                    className="text-xs text-brand hover:underline"
                   >
                     Importar boletim de sondagem
                   </button>
@@ -461,7 +500,7 @@ export function AnalysisPage() {
               id="btn-calcular-manual"
               onClick={handleCalculateManual}
               disabled={running}
-              className="mt-3 flex w-full items-center justify-center gap-2 rounded-md border border-accent-blue px-3 py-2 text-sm font-medium text-accent-blue disabled:opacity-40"
+              className="mt-3 flex w-full items-center justify-center gap-2 rounded-md border border-brand px-3 py-2 text-sm font-medium text-brand disabled:opacity-40"
             >
               <Calculator size={16} /> Calcular FS deste círculo
             </button>
@@ -476,7 +515,7 @@ export function AnalysisPage() {
                 <span>{progressPct}%</span>
               </div>
               <div className="h-1.5 w-full overflow-hidden rounded-full bg-elevated">
-                <div className="h-full bg-accent-blue transition-all" style={{ width: `${progressPct}%` }} />
+                <div className="h-full bg-brand transition-all" style={{ width: `${progressPct}%` }} />
               </div>
               {progress.best_fs !== null && (
                 <div className="mt-1 font-mono text-xs text-text-secondary">
@@ -495,7 +534,7 @@ export function AnalysisPage() {
 
         {/* coluna direita: visualização */}
         <div className="space-y-4">
-          <SlopeCanvas geometry={geometry} layers={layers} result={result} mode={mode} />
+          <SlopeCanvas ref={svgRef} geometry={geometry} layers={layers} result={result} mode={mode} />
           <ResultCard result={result} source={resultSource} />
           <SlicesTable result={result} />
         </div>

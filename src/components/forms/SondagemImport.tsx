@@ -65,7 +65,7 @@ export function SondagemImport({ toeElevation, onImport, onClose }: SondagemImpo
       <div className="mb-3 grid grid-cols-2 gap-3">
         <label className="flex flex-col gap-1">
           <span className="text-xs text-text-secondary">Arquivo do boletim (PDF/imagem)</span>
-          <label className="flex cursor-pointer items-center gap-2 rounded-md border border-dashed border-border bg-elevated px-2 py-1.5 text-sm text-text-secondary hover:border-accent-blue">
+          <label className="flex cursor-pointer items-center gap-2 rounded-md border border-dashed border-border bg-elevated px-2 py-1.5 text-sm text-text-secondary hover:border-brand">
             <FileUp size={16} />
             {fileName ?? 'Escolher arquivo...'}
             <input
@@ -95,7 +95,7 @@ export function SondagemImport({ toeElevation, onImport, onClose }: SondagemImpo
       <button
         onClick={handleExtract}
         disabled={extracting}
-        className="mb-3 flex items-center gap-2 rounded-md bg-accent-blue px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
+        className="mb-3 flex items-center gap-2 rounded-md bg-brand px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
       >
         {extracting && <Loader2 size={14} className="animate-spin" />}
         {extracting ? 'Extraindo...' : 'Extrair dados do boletim'}
