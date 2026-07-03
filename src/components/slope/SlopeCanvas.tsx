@@ -1,4 +1,4 @@
-import { forwardRef, useMemo } from 'react'
+import { forwardRef, useImperativeHandle, useMemo, useRef } from 'react'
 import { buildProfile, effectiveNaturalTerrain, groundY, type Point } from '../../engine/geometry'
 import type { AnalysisMode, AnalysisResult, Layer, SlopeGeometry } from '../../engine/types'
 
@@ -10,6 +10,18 @@ interface SlopeCanvasProps {
   showSlices?: boolean
   showGrid?: boolean
   highlightLayer?: number
+}
+
+export interface CanvasBounds {
+  xMin: number
+  xMax: number
+  yMin: number
+  yMax: number
+}
+
+export interface SlopeCanvasHandle {
+  svg: SVGSVGElement | null
+  bounds: CanvasBounds
 }
 
 const MARGIN_X = 10
@@ -51,10 +63,24 @@ function layerOutline(
   return [...top, ...base.reverse()]
 }
 
-export const SlopeCanvas = forwardRef<SVGSVGElement, SlopeCanvasProps>(function SlopeCanvas(
+/**
+ * Topo/base de uma camada num x de referência — usado para rotular a
+ * profundidade adotada em cada limite de camada (mesma lógica de
+ * layerOutline, mas só para um ponto, não o polígono inteiro).
+ */
+function layerBoundaryY(layer: Layer, x: number, terrain: Point[] | undefined): { top: number; base: number } {
+  const g = terrain && terrain.length ? groundY(x, terrain) : 0
+  return {
+    top: layer.depth_top != null ? g - layer.depth_top : layer.y_top ?? g,
+    base: layer.depth_base != null ? g - layer.depth_base : layer.y_base ?? g,
+  }
+}
+
+export const SlopeCanvas = forwardRef<SlopeCanvasHandle, SlopeCanvasProps>(function SlopeCanvas(
   { geometry, layers, result, mode = 'aterro', showSlices = true, showGrid = true, highlightLayer },
-  svgRef
+  handleRef
 ) {
+  const svgElRef = useRef<SVGSVGElement>(null)
   const profile = useMemo(() => buildProfile(geometry, mode), [geometry, mode])
   const refTerrain = useMemo(() => effectiveNaturalTerrain(geometry, mode), [geometry, mode])
 
@@ -92,7 +118,21 @@ export const SlopeCanvas = forwardRef<SVGSVGElement, SlopeCanvasProps>(function 
   const width = xMax - xMin
   const height = yMax - yMin
 
+  useImperativeHandle(handleRef, () => ({ svg: svgElRef.current, bounds }), [bounds])
+
   const toPath = (pts: Point[]) => pts.map((p) => `${p.x},${p.y}`).join(' ')
+
+  const layerBoundaryElevations = useMemo(() => {
+    const EPS = 1e-6
+    const ys: number[] = []
+    for (const layer of layers) {
+      const { top, base } = layerBoundaryY(layer, xMin, refTerrain)
+      for (const y of [top, base]) {
+        if (Number.isFinite(y) && !ys.some((existing) => Math.abs(existing - y) < EPS)) ys.push(y)
+      }
+    }
+    return ys.sort((a, b) => b - a)
+  }, [layers, xMin, refTerrain])
 
   const arcPoints: Point[] = useMemo(() => {
     if (!result) return []
@@ -116,7 +156,7 @@ export const SlopeCanvas = forwardRef<SVGSVGElement, SlopeCanvasProps>(function 
   return (
     <div className="relative w-full overflow-hidden rounded-lg border border-border bg-surface">
       <svg
-        ref={svgRef}
+        ref={svgElRef}
         viewBox={`0 0 ${width} ${height}`}
         preserveAspectRatio="xMidYMid meet"
         className="h-auto w-full"
@@ -283,6 +323,29 @@ export const SlopeCanvas = forwardRef<SVGSVGElement, SlopeCanvasProps>(function 
                   {p.y.toFixed(2)}m
                 </text>
               ))}
+          </g>
+        )}
+
+        {/* profundidade adotada em cada limite de camada — no canto esquerdo,
+            como uma régua de perfil (mesma referência que layerOutline usa
+            para desenhar as camadas, avaliada num único x). */}
+        {showGrid && layers.length > 0 && (
+          <g fontSize={2.2} fill="var(--color-text-secondary)" fontFamily="'JetBrains Mono', monospace">
+            {layerBoundaryElevations.map((y, i) => (
+              <g key={i}>
+                <line
+                  x1={0.5}
+                  y1={yMax - y}
+                  x2={2.5}
+                  y2={yMax - y}
+                  stroke="var(--color-text-secondary)"
+                  strokeWidth={0.15}
+                />
+                <text x={3} y={yMax - y + 0.8}>
+                  {y.toFixed(2)}m
+                </text>
+              </g>
+            ))}
           </g>
         )}
       </svg>

@@ -9,7 +9,7 @@ import { SoilLayerTable } from '../components/forms/SoilLayerTable'
 import { FillForm } from '../components/forms/FillForm'
 import { SondagemImport } from '../components/forms/SondagemImport'
 import { NumberField } from '../components/forms/NumberField'
-import { SlopeCanvas } from '../components/slope/SlopeCanvas'
+import { SlopeCanvas, type SlopeCanvasHandle } from '../components/slope/SlopeCanvas'
 import { ResultCard } from '../components/slope/ResultCard'
 import { SlicesTable } from '../components/slope/SlicesTable'
 import { bishopFS } from '../engine/bishop'
@@ -122,7 +122,7 @@ export function AnalysisPage() {
   const [savedAnalyses, setSavedAnalyses] = useState<SavedAnalysis[]>([])
   const [loadingList, setLoadingList] = useState(false)
   const [exportingPdf, setExportingPdf] = useState(false)
-  const svgRef = useRef<SVGSVGElement>(null)
+  const canvasRef = useRef<SlopeCanvasHandle>(null)
 
   const handleCalculate = async () => {
     setRunning(true)
@@ -244,7 +244,8 @@ export function AnalysisPage() {
         fillZones,
         fillReference,
         result,
-        svgElement: svgRef.current,
+        svgElement: canvasRef.current?.svg ?? null,
+        bounds: canvasRef.current?.bounds ?? null,
       })
     } catch (err) {
       setError(err instanceof Error ? `Erro ao exportar PDF: ${err.message}` : 'Erro ao exportar PDF.')
@@ -534,7 +535,7 @@ export function AnalysisPage() {
 
         {/* coluna direita: visualização */}
         <div className="space-y-4">
-          <SlopeCanvas ref={svgRef} geometry={geometry} layers={layers} result={result} mode={mode} />
+          <SlopeCanvas ref={canvasRef} geometry={geometry} layers={layers} result={result} mode={mode} />
           <ResultCard result={result} source={resultSource} />
           <SlicesTable result={result} />
         </div>

@@ -1,6 +1,8 @@
 import { jsPDF } from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import { SLICE_COLUMNS } from '../components/slope/SlicesTable'
+import type { CanvasBounds } from '../components/slope/SlopeCanvas'
+import { effectiveNaturalTerrain, groundY } from '../engine/geometry'
 import type {
   AnalysisMode,
   AnalysisResult,
@@ -9,6 +11,7 @@ import type {
   FillMaterial,
   FillZone,
   Layer,
+  Point,
   SlopeGeometry,
   StabilityMethod,
 } from '../engine/types'
@@ -31,6 +34,7 @@ export interface ReportData {
   fillReference: CompactionReference | null
   result: AnalysisResult
   svgElement: SVGSVGElement | null
+  bounds: CanvasBounds | null
 }
 
 const METHOD_LABELS: Record<StabilityMethod, string> = {
@@ -130,28 +134,72 @@ async function svgToJpegDataUrl(
   }
 }
 
+/** Topo/base de uma camada num x de referência — mesma lógica usada no desenho (SlopeCanvas). */
+function layerBoundaryY(layer: Layer, x: number, terrain: Point[] | undefined): { top: number; base: number } {
+  const g = terrain && terrain.length ? groundY(x, terrain) : 0
+  return {
+    top: layer.depth_top != null ? g - layer.depth_top : layer.y_top ?? g,
+    base: layer.depth_base != null ? g - layer.depth_base : layer.y_base ?? g,
+  }
+}
+
+interface LayerPanelAlign {
+  bounds: CanvasBounds
+  terrain: Point[] | undefined
+  imgTop: number // mm, topo da imagem na página
+  imgHeight: number // mm
+}
+
 /**
  * Painel lateral com os dados de cada camada (nome, profundidade adotada no
  * limite superior/inferior, c'/φ'/γ) — ao lado do desenho, no estilo de uma
  * coluna de sondagem/perfil geotécnico. Texto puro (não autoTable) porque a
  * coluna é estreita (1/3 da página) e o layout vertical por camada
  * aproveita melhor o espaço do que uma tabela larga.
+ *
+ * Quando `align` está disponível, cada bloco de camada é posicionado à
+ * altura (em mm) correspondente à posição vertical da própria faixa
+ * colorida no desenho — não simplesmente empilhado em sequência — para que
+ * o texto fique de fato ao lado da faixa que descreve. Nunca sobrepõe o
+ * bloco anterior: se o alvo alinhado cair antes do fim do bloco anterior,
+ * cai de volta no empilhamento sequencial normal.
  */
-function drawLayerPanel(doc: jsPDF, layers: Layer[], x: number, y: number, width: number, mode: AnalysisMode): number {
-  let cy = y
-
+function drawLayerPanel(
+  doc: jsPDF,
+  layers: Layer[],
+  x: number,
+  y: number,
+  width: number,
+  mode: AnalysisMode,
+  align: LayerPanelAlign | null
+): number {
   doc.setFontSize(9)
   doc.setFont('helvetica', 'bold')
   doc.setTextColor(0, 0, 0)
-  doc.text(mode === 'corte' ? 'Camadas (corte)' : 'Camadas (fundação)', x, cy)
-  cy += 5.5
+  doc.text(mode === 'corte' ? 'Camadas (corte)' : 'Camadas (fundação)', x, y)
+
+  let cy = y + 5.5
 
   layers.forEach((l, i) => {
     doc.setFontSize(7.5)
     doc.setFont('helvetica', 'bold')
     const nameLines: string[] = doc.splitTextToSize(pdfSafe(l.name), width)
-    doc.text(nameLines, x, cy)
-    cy += nameLines.length * 3.2 + 0.8
+    const blockHeight = nameLines.length * 3.2 + 0.8 + 5 * 3.4 + 1.5
+
+    let startY = cy
+    if (align) {
+      const { top, base } = layerBoundaryY(l, align.bounds.xMin, align.terrain)
+      const midData = (top + base) / 2
+      const frac = (align.bounds.yMax - midData) / (align.bounds.yMax - align.bounds.yMin)
+      const targetCenter = align.imgTop + frac * align.imgHeight
+      startY = Math.max(cy, targetCenter - blockHeight / 2)
+    }
+
+    doc.setFontSize(7.5)
+    doc.setFont('helvetica', 'bold')
+    doc.setTextColor(0, 0, 0)
+    doc.text(nameLines, x, startY)
+    let ly = startY + nameLines.length * 3.2 + 0.8
 
     doc.setFont('helvetica', 'normal')
     doc.setFontSize(7)
@@ -159,11 +207,11 @@ function drawLayerPanel(doc: jsPDF, layers: Layer[], x: number, y: number, width
     const base = l.depth_base != null ? `prof. ${fmt(l.depth_base)} m` : l.y_base != null ? `cota ${fmt(l.y_base)} m` : '—'
     const lines = [`Limite sup.: ${top}`, `Limite inf.: ${base}`, `c' = ${fmt(l.c)} kPa`, `phi' = ${fmt(l.phi)}°`, `gamma = ${fmt(l.gamma)} kN/m³`]
     for (const line of lines) {
-      doc.text(line, x, cy)
-      cy += 3.4
+      doc.text(line, x, ly)
+      ly += 3.4
     }
-    cy += 1.5
 
+    cy = startY + blockHeight
     if (i < layers.length - 1) {
       doc.setDrawColor(220, 220, 220)
       doc.line(x, cy - 1, x + width, cy - 1)
@@ -175,7 +223,8 @@ function drawLayerPanel(doc: jsPDF, layers: Layer[], x: number, y: number, width
 }
 
 export async function exportReportToPdf(data: ReportData, fileName = 'miso4slope-relatorio.pdf'): Promise<void> {
-  const { header, mode, method, geometry, layers, fill, fillZones, result, svgElement } = data
+  const { header, mode, method, geometry, layers, fill, fillZones, result, svgElement, bounds } = data
+  const terrain = effectiveNaturalTerrain(geometry, mode)
 
   const doc = new jsPDF({ unit: 'mm', format: 'a4' })
   const pageWidth = doc.internal.pageSize.getWidth()
@@ -237,7 +286,8 @@ export async function exportReportToPdf(data: ReportData, fileName = 'miso4slope
       }
 
       doc.addImage(dataUrl, 'JPEG', margin, y, imgWidth, imgHeight)
-      const panelBottom = drawLayerPanel(doc, layers, panelX, y + 4, panelWidth, mode)
+      const panelAlign: LayerPanelAlign | null = bounds ? { bounds, terrain, imgTop: y, imgHeight } : null
+      const panelBottom = drawLayerPanel(doc, layers, panelX, y + 4, panelWidth, mode, panelAlign)
       y = Math.max(y + imgHeight, panelBottom) + 8
     } catch {
       // se a rasterização falhar por qualquer motivo, o relatório segue sem a imagem
