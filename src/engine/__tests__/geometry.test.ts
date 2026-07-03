@@ -29,6 +29,49 @@ describe('buildProfile — ordem das bancadas por modo', () => {
   })
 })
 
+describe('buildProfile — inclinação da berma', () => {
+  // duas bancadas cheias de 8m e uma berma de 2,5m no meio (total_height=16, bench_height=8)
+  const geo: SlopeGeometry = {
+    bench_height: 8,
+    slope_ratio: 1.5,
+    berm_width: 2.5,
+    total_height: 16,
+    water_table_depth: 10,
+  }
+
+  // profile: [0]=aproximação [1]=pé(0,0) [2]=topo da 1ª bancada/início da berma
+  // [3]=fim da berma [4]=topo da 2ª bancada/crista ...
+  test('sem berm_slope_pct (padrão), a berma continua plana — comportamento anterior preservado', () => {
+    const profile = buildProfile(geo, 'aterro')
+    const bermStart = profile[2]
+    const bermEnd = profile[3]
+    expect(bermEnd.y).toBeCloseTo(bermStart.y)
+  })
+
+  test('berm_slope_pct negativo (desce): a berma perde cota da bancada para a borda', () => {
+    const profile = buildProfile({ ...geo, berm_slope_pct: -4 }, 'aterro')
+    const bermStart = profile[2]
+    const bermEnd = profile[3]
+    expect(bermEnd.y).toBeLessThan(bermStart.y)
+    expect(bermEnd.y - bermStart.y).toBeCloseTo(2.5 * -0.04) // largura × declividade
+  })
+
+  test('berm_slope_pct positivo (sobe): a berma ganha cota da bancada para a borda', () => {
+    const profile = buildProfile({ ...geo, berm_slope_pct: 4 }, 'aterro')
+    const bermStart = profile[2]
+    const bermEnd = profile[3]
+    expect(bermEnd.y).toBeGreaterThan(bermStart.y)
+    expect(bermEnd.y - bermStart.y).toBeCloseTo(2.5 * 0.04)
+  })
+
+  test('a plataforma final continua plana na última cota, independente da inclinação da berma', () => {
+    const profile = buildProfile({ ...geo, berm_slope_pct: -4 }, 'aterro')
+    const last = profile[profile.length - 1]
+    const secondLast = profile[profile.length - 2]
+    expect(last.y).toBeCloseTo(secondLast.y)
+  })
+})
+
 describe('effectiveNaturalTerrain', () => {
   const geo: SlopeGeometry = {
     bench_height: 8,

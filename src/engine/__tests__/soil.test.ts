@@ -163,6 +163,31 @@ describe('avgSoil — resistência na base, peso integrado ao longo da altura', 
     expect(s.phi).toBeCloseTo(22)
     expect(s.gamma).toBeCloseTo(15)
   })
+
+  test('segments decompõe a altura exatamente por material, na ordem topo→base', () => {
+    const s = avgSoil(0, 5, -3, foundationLayers, fillMat)
+    expect(s.segments).toHaveLength(2)
+    expect(s.segments[0].key).toBe('fill')
+    expect(s.segments[0].height).toBeCloseTo(5)
+    expect(s.segments[1].key).toBe('layer:0')
+    expect(s.segments[1].name).toBe('Argila mole')
+    expect(s.segments[1].height).toBeCloseTo(3)
+    // soma dos segmentos bate com a altura total da fatia
+    const totalH = s.segments.reduce((a, seg) => a + seg.height, 0)
+    expect(totalH).toBeCloseTo(8)
+  })
+
+  test('duas camadas de fundação diferentes geram três segmentos (aterro + 2 camadas)', () => {
+    const twoLayers: Layer[] = [
+      { name: 'Argila mole', y_top: 0, y_base: -5, c: 5, phi: 22, gamma: 15 },
+      { name: 'Argila rija', y_top: -5, y_base: -20, c: 20, phi: 30, gamma: 19 },
+    ]
+    const s = avgSoil(0, 3, -8, twoLayers, fillMat)
+    expect(s.segments.map((seg) => seg.key)).toEqual(['fill', 'layer:0', 'layer:1'])
+    expect(s.segments[0].height).toBeCloseTo(3) // aterro: y=3 até y=0
+    expect(s.segments[1].height).toBeCloseTo(5) // camada 1: y=0 até y=-5
+    expect(s.segments[2].height).toBeCloseTo(3) // camada 2: y=-5 até y=-8
+  })
 })
 
 describe('soilAt — modo corte (fill=null, sem material importado)', () => {
@@ -183,7 +208,7 @@ describe('soilAt — modo corte (fill=null, sem material importado)', () => {
 
   test('sem nenhuma camada e sem fill, retorna zeros em vez de quebrar', () => {
     const s = soilAt(0, 5, [], null)
-    expect(s).toEqual({ c: 0, phi: 0, gamma: 0 })
+    expect(s).toEqual({ c: 0, phi: 0, gamma: 0, sourceKey: 'none', sourceName: '—' })
   })
 
   test('avgSoil em modo corte: resistência na base e peso todo em gammaH_fundacao', () => {

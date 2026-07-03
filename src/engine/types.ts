@@ -66,6 +66,8 @@ export interface SlopeGeometry {
   bench_height: number       // altura por bancada (m)
   slope_ratio: number        // fator H:V (ex: 1.5 para 1:1,5)
   berm_width: number         // largura da berma (m)
+  berm_slope_pct?: number    // declividade da berma (%) — positivo sobe (para dentro), negativo desce
+                              // (para fora, drenagem); 0/indefinido = berma plana (padrão)
   total_height: number       // altura total do aterro (m)
   water_table_depth: number  // profundidade do NA abaixo do pé (m)
   gamma_water?: number       // peso esp. da água (padrão: 9.81)
@@ -82,6 +84,15 @@ export interface CircleParams {
   R: number
 }
 
+// Um trecho de material dentro da altura de uma fatia — usado para colorir
+// no croqui exatamente as camadas/zonas/aterro que aquela fatia atravessa,
+// na ordem em que aparecem (topo→base).
+export interface MaterialSegment {
+  key: string    // 'layer:<índice>', 'zone:<índice>', 'fill' ou 'none' — mesmo índice usado para colorir a camada no desenho geral
+  name: string
+  height: number // espessura exata deste trecho dentro da fatia (m)
+}
+
 export interface SliceResult {
   index: number
   xm: number
@@ -90,6 +101,7 @@ export interface SliceResult {
   h: number
   h_aterro: number     // parcela da altura acima do terreno natural (material do aterro)
   h_fundacao: number   // parcela da altura abaixo do terreno natural (material da fundação)
+  materialSegments: MaterialSegment[] // decomposição exata da altura por material (para o croqui)
   c: number
   phi: number
   gamma: number

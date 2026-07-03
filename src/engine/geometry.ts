@@ -72,6 +72,7 @@ function buildApproachSegment(naturalTerrain: Point[] | undefined): Point[] {
  */
 export function buildProfile(geo: SlopeGeometry, mode: AnalysisMode = 'aterro'): Point[] {
   const { bench_height, slope_ratio, berm_width, total_height } = geo
+  const bermSlope = (geo.berm_slope_pct ?? 0) / 100 // % → razão; positivo sobe, negativo desce
 
   const points: Point[] = buildApproachSegment(geo.natural_terrain)
 
@@ -86,7 +87,10 @@ export function buildProfile(geo: SlopeGeometry, mode: AnalysisMode = 'aterro'):
     y += rise
     points.push({ x, y })
 
-    x += cumHeight < total_height - EPS ? berm_width : 0
+    if (cumHeight < total_height - EPS) {
+      x += berm_width
+      y += berm_width * bermSlope
+    }
     points.push({ x, y })
   }
 

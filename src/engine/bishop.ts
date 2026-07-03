@@ -82,6 +82,7 @@ export function bishopFS(
       h: s.h,
       h_aterro: s.h_aterro,
       h_fundacao: s.h_fundacao,
+      materialSegments: s.materialSegments,
       c: s.c,
       phi: s.phi_deg,
       gamma: s.gamma,

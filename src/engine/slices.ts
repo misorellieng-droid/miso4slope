@@ -1,6 +1,15 @@
 import { buildProfile, effectiveNaturalTerrain, groundY } from './geometry'
 import { avgSoil, resolveFillZones, splitHeightByGround } from './soil'
-import type { AnalysisMode, CircleParams, FaceCoverage, FillMaterial, FillZone, Layer, SlopeGeometry } from './types'
+import type {
+  AnalysisMode,
+  CircleParams,
+  FaceCoverage,
+  FillMaterial,
+  FillZone,
+  Layer,
+  MaterialSegment,
+  SlopeGeometry,
+} from './types'
 
 const SWEEP_POINTS = 2000
 const MIN_ARC_WIDTH = 3 // m
@@ -88,6 +97,7 @@ export interface RawSlice {
   h: number
   h_aterro: number
   h_fundacao: number
+  materialSegments: MaterialSegment[]
   c: number
   phi_rad: number
   phi_deg: number
@@ -160,6 +170,7 @@ export function buildRawSlices(
       h,
       h_aterro,
       h_fundacao,
+      materialSegments: soil.segments,
       c: soil.c,
       phi_rad,
       phi_deg: soil.phi,

@@ -46,6 +46,13 @@ export function GeometryForm({ value, onChange, mode }: GeometryFormProps) {
           onChange={(v) => set('berm_width', v)}
         />
         <NumberField
+          label="Inclinação da berma (+ sobe, - desce)"
+          value={value.berm_slope_pct ?? 0}
+          step={0.5}
+          suffix="%"
+          onChange={(v) => set('berm_slope_pct', v)}
+        />
+        <NumberField
           label={mode === 'corte' ? 'Altura total do corte' : 'Altura total do talude'}
           value={value.total_height}
           step={0.1}

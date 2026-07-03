@@ -1,10 +1,12 @@
 import { groundY } from './geometry'
-import type { CoverageType, FaceCoverage, FillMaterial, FillZone, Layer, Point } from './types'
+import type { CoverageType, FaceCoverage, FillMaterial, FillZone, Layer, MaterialSegment, Point } from './types'
 
 export interface SoilParams {
   c: number
   phi: number
   gamma: number
+  sourceKey: string // identificador estável do material — 'layer:<índice>', 'zone:<índice>', 'fill' ou 'none'
+  sourceName: string // nome legível do material, para exibição (legenda, croqui)
 }
 
 /**
@@ -88,31 +90,38 @@ export function soilAt(
 
   if (y >= groundLevel && fill) {
     if (fillZones) {
-      for (const zone of fillZones) {
+      for (let i = 0; i < fillZones.length; i++) {
+        const zone = fillZones[i]
         const { top, base } = effectiveBounds(zone, groundLevel)
         if (y <= top && y >= base) {
-          return { c: zone.c, phi: zone.phi, gamma: zone.gamma }
+          return { c: zone.c, phi: zone.phi, gamma: zone.gamma, sourceKey: `zone:${i}`, sourceName: zone.name }
         }
       }
     }
-    return { c: fill.c, phi: fill.phi, gamma: fill.gamma }
+    return { c: fill.c, phi: fill.phi, gamma: fill.gamma, sourceKey: 'fill', sourceName: 'Aterro' }
   }
 
   // Modo corte (fill=null): não há material importado — mesmo acima da
   // superfície do terreno de referência (não deveria ocorrer numa geometria
   // de corte válida, já que o perfil escavado fica sempre no nível do
   // terreno natural ou abaixo dele), cai direto nas camadas naturais.
-  if (layers.length === 0) return fill ? { c: fill.c, phi: fill.phi, gamma: fill.gamma } : { c: 0, phi: 0, gamma: 0 }
+  if (layers.length === 0) {
+    return fill
+      ? { c: fill.c, phi: fill.phi, gamma: fill.gamma, sourceKey: 'fill', sourceName: 'Aterro' }
+      : { c: 0, phi: 0, gamma: 0, sourceKey: 'none', sourceName: '—' }
+  }
 
-  for (const layer of layers) {
+  for (let i = 0; i < layers.length; i++) {
+    const layer = layers[i]
     const { top, base } = effectiveBounds(layer, groundLevel)
     if (y <= top && y >= base) {
-      return { c: layer.c, phi: layer.phi, gamma: layer.gamma }
+      return { c: layer.c, phi: layer.phi, gamma: layer.gamma, sourceKey: `layer:${i}`, sourceName: layer.name }
     }
   }
 
-  const last = layers[layers.length - 1]
-  return { c: last.c, phi: last.phi, gamma: last.gamma }
+  const lastIndex = layers.length - 1
+  const last = layers[lastIndex]
+  return { c: last.c, phi: last.phi, gamma: last.gamma, sourceKey: `layer:${lastIndex}`, sourceName: last.name }
 }
 
 /**
@@ -175,6 +184,7 @@ export interface WeightBreakdown {
   gamma: number         // γ médio ponderado pela espessura de cada trecho (para referência)
   gammaH_aterro: number // Σ(γᵢ·hᵢ) da parcela de aterro — W_aterro = isto × b
   gammaH_fundacao: number // Σ(γᵢ·hᵢ) da parcela de fundação — W_fundacao = isto × b
+  segments: MaterialSegment[] // trechos na ordem em que a fatia atravessa (topo→base), para desenhar a pilha de cores
 }
 
 /**
@@ -198,6 +208,7 @@ function integrateWeight(
 
   let gammaH_aterro = 0
   let gammaH_fundacao = 0
+  const segments: MaterialSegment[] = []
 
   for (let i = 0; i < boundaries.length - 1; i++) {
     const segTop = boundaries[i]
@@ -206,19 +217,21 @@ function integrateWeight(
     if (segH <= 1e-9) continue
 
     const mid = (segTop + segBase) / 2
-    const gamma = soilAt(xm, mid, layers, fill, fillZones, terrain).gamma
+    const soil = soilAt(xm, mid, layers, fill, fillZones, terrain)
 
     // sem material importado (modo corte), tudo é "fundação" (natural) por
     // definição — a comparação com groundLevel só faz sentido para separar
     // aterro de fundação quando existe de fato um aterro
-    if (fill && mid >= groundLevel) gammaH_aterro += gamma * segH
-    else gammaH_fundacao += gamma * segH
+    if (fill && mid >= groundLevel) gammaH_aterro += soil.gamma * segH
+    else gammaH_fundacao += soil.gamma * segH
+
+    segments.push({ key: soil.sourceKey, name: soil.sourceName, height: segH })
   }
 
   const h = y_top - y_base
   const gamma = h > 0 ? (gammaH_aterro + gammaH_fundacao) / h : 0
 
-  return { gamma, gammaH_aterro, gammaH_fundacao }
+  return { gamma, gammaH_aterro, gammaH_fundacao, segments }
 }
 
 /**
@@ -251,7 +264,7 @@ export function avgSoil(
   const baseSoil = soilAt(xm, y_base, layers, fill, fillZones, terrain)
   const c = applyCoverage(baseSoil.c, y_base, y_top, groundLevel, coverage)
 
-  return { c, phi: baseSoil.phi, ...weight }
+  return { c, phi: baseSoil.phi, sourceKey: baseSoil.sourceKey, sourceName: baseSoil.sourceName, ...weight }
 }
 
 /**

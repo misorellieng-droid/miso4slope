@@ -27,7 +27,28 @@ export interface SlopeCanvasHandle {
 const MARGIN_X = 10
 const MARGIN_Y = 6
 const LAYER_COLORS = ['#3498DB', '#9B59B6', '#1ABC9C', '#F39C12', '#95A5A6', '#E67E22']
+const FILL_COLOR = '#D4AC0D' // corpo do aterro — fora da paleta de LAYER_COLORS, pra nunca coincidir com uma camada
+const ZONE_COLORS = ['#B7950B', '#9A7D0A', '#7D6608'] // zonas de compactação — tons da mesma família do aterro
 const LAYER_SAMPLES = 40
+
+/**
+ * Cor de um trecho de material dentro de uma fatia (materialSegments),
+ * combinando com a cor usada para a mesma camada no polígono geral do
+ * desenho — assim o usuário associa visualmente a cor na fatia com a cor
+ * da camada/aterro que ela representa.
+ */
+function colorForSegment(key: string): string {
+  if (key === 'fill') return FILL_COLOR
+  if (key.startsWith('zone:')) {
+    const idx = Number.parseInt(key.slice(5), 10)
+    return ZONE_COLORS[idx % ZONE_COLORS.length]
+  }
+  if (key.startsWith('layer:')) {
+    const idx = Number.parseInt(key.slice(6), 10)
+    return LAYER_COLORS[idx % LAYER_COLORS.length]
+  }
+  return '#95A5A6'
+}
 
 function fsColor(fs: number): string {
   if (fs >= 1.5) return 'var(--color-accent-green)'
@@ -253,23 +274,49 @@ export const SlopeCanvas = forwardRef<SlopeCanvasHandle, SlopeCanvasProps>(funct
             />
           )}
 
-          {/* fatias */}
+          {/* fatias — cada uma dividida pelos materiais que realmente atravessa
+              (materialSegments), coloridas igual à camada/aterro correspondente
+              no desenho geral, pra correlacionar visualmente com a coluna c'/φ'/γ
+              de cada trecho na Tabela de Fatias */}
           {showSlices &&
             result &&
-            result.slices.map((s) => (
-              <rect
-                key={s.index}
-                x={s.xm - s.b / 2}
-                y={s.y_base}
-                width={s.b}
-                height={s.h}
-                fill="#F1C40F"
-                opacity={0.18}
-                stroke="#F1C40F"
-                strokeOpacity={0.4}
-                strokeWidth={0.06}
-              />
-            ))}
+            result.slices.map((s) => {
+              const segRects: { top: number; base: number; key: string }[] = []
+              let cursorY = s.y_top
+              for (const seg of s.materialSegments ?? []) {
+                const base = cursorY - seg.height
+                segRects.push({ top: cursorY, base, key: seg.key })
+                cursorY = base
+              }
+              return (
+                <g key={s.index}>
+                  {segRects.map((r, i) => (
+                    <rect
+                      key={i}
+                      x={s.xm - s.b / 2}
+                      y={r.base}
+                      width={s.b}
+                      height={r.top - r.base}
+                      fill={colorForSegment(r.key)}
+                      opacity={0.45}
+                      stroke={colorForSegment(r.key)}
+                      strokeOpacity={0.6}
+                      strokeWidth={0.05}
+                    />
+                  ))}
+                  <rect
+                    x={s.xm - s.b / 2}
+                    y={s.y_base}
+                    width={s.b}
+                    height={s.h}
+                    fill="none"
+                    stroke="#F1C40F"
+                    strokeOpacity={0.5}
+                    strokeWidth={0.08}
+                  />
+                </g>
+              )
+            })}
 
           {/* nível d'água */}
           <line
@@ -323,7 +370,9 @@ export const SlopeCanvas = forwardRef<SlopeCanvasHandle, SlopeCanvasProps>(funct
 
         {/* cotas — em coordenadas de tela (fora do grupo espelhado, texto não fica invertido).
             só rotula a primeira ocorrência de cada elevação (bancada), pulando o ponto
-            gêmeo da berma que fica na mesma cota, para não sobrepor os rótulos. */}
+            gêmeo da berma que fica na mesma cota, para não sobrepor os rótulos. Quando a
+            cota do pé/plataforma é informada, os rótulos passam a mostrar a cota real do
+            projeto (pé + y) em vez da elevação relativa ao pé (y=0). */}
         {showGrid && (
           <g fontSize={2.4} fill="var(--color-text-secondary)" fontFamily="'JetBrains Mono', monospace">
             {profile
@@ -331,13 +380,13 @@ export const SlopeCanvas = forwardRef<SlopeCanvasHandle, SlopeCanvasProps>(funct
               .filter((p, i, arr) => i === 0 || p.y !== arr[i - 1].y)
               .map((p, i) => (
                 <text key={i} x={p.x - xMin + 0.5} y={yMax - p.y - 0.5}>
-                  {p.y.toFixed(2)}m
+                  {(p.y + (geometry.toe_elevation ?? 0)).toFixed(2)}m
                 </text>
               ))}
           </g>
         )}
 
-        {/* profundidade adotada em cada limite de camada — no canto esquerdo,
+        {/* profundidade/cota adotada em cada limite de camada — no canto esquerdo,
             como uma régua de perfil (mesma referência que layerOutline usa
             para desenhar as camadas, avaliada num único x). */}
         {showGrid && layers.length > 0 && (
@@ -353,7 +402,7 @@ export const SlopeCanvas = forwardRef<SlopeCanvasHandle, SlopeCanvasProps>(funct
                   strokeWidth={0.15}
                 />
                 <text x={3} y={yMax - y + 0.8}>
-                  {y.toFixed(2)}m
+                  {(y + (geometry.toe_elevation ?? 0)).toFixed(2)}m
                 </text>
               </g>
             ))}

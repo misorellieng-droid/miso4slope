@@ -223,7 +223,8 @@ function drawLayerPanel(
   y: number,
   width: number,
   title: string,
-  align: LayerPanelAlign | null
+  align: LayerPanelAlign | null,
+  toeElevation: number | undefined
 ): number {
   doc.setFontSize(9)
   doc.setFont('helvetica', 'bold')
@@ -254,10 +255,15 @@ function drawLayerPanel(
 
     doc.setFont('helvetica', 'normal')
     doc.setFontSize(7)
-    const prefix = item.isDepth ? 'prof.' : 'cota'
+    // com a cota do pé/plataforma informada, mostra a cota absoluta do
+    // projeto (pé + limite) em vez da profundidade/elevação relativa —
+    // vale para qualquer item, mesmo os definidos por profundidade
+    const prefix = toeElevation != null ? 'cota' : item.isDepth ? 'prof.' : 'cota'
+    const topDisplay = toeElevation != null ? item.top + toeElevation : item.top
+    const baseDisplay = toeElevation != null ? item.base + toeElevation : item.base
     const lines = [
-      `Limite sup.: ${prefix} ${fmt(item.top)} m`,
-      `Limite inf.: ${prefix} ${fmt(item.base)} m`,
+      `Limite sup.: ${prefix} ${fmt(topDisplay)} m`,
+      `Limite inf.: ${prefix} ${fmt(baseDisplay)} m`,
       `c' = ${fmt(item.c)} kPa`,
       `phi' = ${fmt(item.phi)}°`,
       `gamma = ${fmt(item.gamma)} kN/m³`,
@@ -359,7 +365,16 @@ export async function exportReportToPdf(data: ReportData, fileName = 'miso4slope
       const panelItems = buildPanelItems(mode, layers, fill, fillZones, geometry, bounds?.xMin ?? 0, terrain)
       const panelTitle = mode === 'corte' ? 'Camadas (corte)' : 'Materiais (aterro + fundação)'
       const panelAlign: LayerPanelAlign | null = bounds ? { bounds, imgTop: y, imgHeight } : null
-      const panelBottom = drawLayerPanel(doc, panelItems, panelX, y + 4, panelWidth, panelTitle, panelAlign)
+      const panelBottom = drawLayerPanel(
+        doc,
+        panelItems,
+        panelX,
+        y + 4,
+        panelWidth,
+        panelTitle,
+        panelAlign,
+        geometry.toe_elevation
+      )
       y = Math.max(y + imgHeight, panelBottom) + 8
     } catch {
       // se a rasterização falhar por qualquer motivo, o relatório segue sem a imagem
