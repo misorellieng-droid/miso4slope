@@ -1,14 +1,17 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, ChevronDown, ChevronUp, Download, FileDown, Loader2, Trash2, Upload } from 'lucide-react'
+import { ArrowLeft, ChevronDown, ChevronUp, Download, FileDown, Loader2, Pencil, Trash2, Upload } from 'lucide-react'
+import { deleteAnalysis, renameAnalysis } from '../lib/analysisStorage'
 import {
   deleteProjeto,
   getProjetoDetail,
   getSondagemCamadas,
   sondagemFileUrl,
+  updateProjeto,
   type CamadaRow,
   type ProjetoDetail,
 } from '../lib/projetosStorage'
+import { deleteSondagem, renameSondagem } from '../lib/sondagemStorage'
 
 const METHOD_LABELS: Record<string, string> = {
   bishop: 'Bishop Simplificado',
@@ -26,17 +29,23 @@ export function ProjetoDetailPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [deleting, setDeleting] = useState(false)
+  const [busyRowId, setBusyRowId] = useState<string | null>(null)
   const [expandedSondagem, setExpandedSondagem] = useState<string | null>(null)
   const [camadas, setCamadas] = useState<Record<string, CamadaRow[]>>({})
+
+  const reload = () => {
+    if (!id) return Promise.resolve()
+    return getProjetoDetail(id)
+      .then(setProjeto)
+      .catch((err) => setError(err instanceof Error ? err.message : 'Erro ao carregar projeto.'))
+  }
 
   useEffect(() => {
     if (!id) return
     setLoading(true)
     setError(null)
-    getProjetoDetail(id)
-      .then(setProjeto)
-      .catch((err) => setError(err instanceof Error ? err.message : 'Erro ao carregar projeto.'))
-      .finally(() => setLoading(false))
+    reload().finally(() => setLoading(false))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id])
 
   const toggleSondagem = async (sondagemId: string) => {
@@ -74,6 +83,73 @@ export function ProjetoDetailPage() {
     }
   }
 
+  const handleRenameProjeto = async () => {
+    if (!id || !projeto) return
+    const nome = window.prompt('Nome do projeto:', projeto.nome)
+    if (!nome || nome === projeto.nome) return
+    const descricao = window.prompt('Descrição (opcional):', projeto.descricao ?? '') ?? projeto.descricao
+    try {
+      await updateProjeto(id, { nome, descricao })
+      await reload()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erro ao renomear projeto.')
+    }
+  }
+
+  const handleDeleteAnalise = async (analiseId: string, nomeSecao: string) => {
+    if (!window.confirm(`Excluir a análise "${nomeSecao}"? Não pode ser desfeito.`)) return
+    setBusyRowId(analiseId)
+    try {
+      await deleteAnalysis(analiseId)
+      await reload()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erro ao excluir análise.')
+    } finally {
+      setBusyRowId(null)
+    }
+  }
+
+  const handleRenameAnalise = async (analiseId: string, nomeSecao: string) => {
+    const novoNome = window.prompt('Nome da seção/análise:', nomeSecao)
+    if (!novoNome || novoNome === nomeSecao) return
+    setBusyRowId(analiseId)
+    try {
+      await renameAnalysis(analiseId, novoNome)
+      await reload()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erro ao renomear análise.')
+    } finally {
+      setBusyRowId(null)
+    }
+  }
+
+  const handleDeleteSondagem = async (sondagemId: string, nome: string) => {
+    if (!window.confirm(`Excluir a sondagem "${nome}" e suas camadas? Não pode ser desfeito.`)) return
+    setBusyRowId(sondagemId)
+    try {
+      await deleteSondagem(sondagemId)
+      await reload()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erro ao excluir sondagem.')
+    } finally {
+      setBusyRowId(null)
+    }
+  }
+
+  const handleRenameSondagem = async (sondagemId: string, nome: string) => {
+    const novoNome = window.prompt('Nome da sondagem:', nome)
+    if (!novoNome || novoNome === nome) return
+    setBusyRowId(sondagemId)
+    try {
+      await renameSondagem(sondagemId, novoNome)
+      await reload()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erro ao renomear sondagem.')
+    } finally {
+      setBusyRowId(null)
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex items-center gap-2 text-sm text-text-secondary">
@@ -99,14 +175,22 @@ export function ProjetoDetailPage() {
           <h1 className="font-sans text-xl font-bold text-text-primary">{projeto.nome}</h1>
           {projeto.descricao && <p className="text-sm text-text-secondary">{projeto.descricao}</p>}
         </div>
-        <button
-          onClick={handleDelete}
-          disabled={deleting}
-          className="flex items-center gap-2 rounded-md border border-accent-red/40 px-3 py-2 text-sm text-accent-red hover:bg-accent-red/10 disabled:opacity-60"
-        >
-          {deleting ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
-          Excluir projeto
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleRenameProjeto}
+            className="flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm text-text-secondary hover:text-text-primary"
+          >
+            <Pencil size={14} /> Editar
+          </button>
+          <button
+            onClick={handleDelete}
+            disabled={deleting}
+            className="flex items-center gap-2 rounded-md border border-accent-red/40 px-3 py-2 text-sm text-accent-red hover:bg-accent-red/10 disabled:opacity-60"
+          >
+            {deleting ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+            Excluir projeto
+          </button>
+        </div>
       </div>
 
       {error && (
@@ -146,6 +230,22 @@ export function ProjetoDetailPage() {
                       FS = {a.fs.toFixed(3)}
                     </span>
                   )}
+                  <button
+                    aria-label="Renomear análise"
+                    onClick={() => handleRenameAnalise(a.id, a.nome_secao)}
+                    disabled={busyRowId === a.id}
+                    className="rounded p-1.5 text-text-secondary hover:bg-elevated hover:text-text-primary disabled:opacity-40"
+                  >
+                    <Pencil size={14} />
+                  </button>
+                  <button
+                    aria-label="Excluir análise"
+                    onClick={() => handleDeleteAnalise(a.id, a.nome_secao)}
+                    disabled={busyRowId === a.id}
+                    className="rounded p-1.5 text-text-secondary hover:bg-accent-red/10 hover:text-accent-red disabled:opacity-40"
+                  >
+                    {busyRowId === a.id ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                  </button>
                   <Link
                     to={`/analise?load=${a.id}`}
                     className="rounded-md border border-border px-2.5 py-1.5 text-xs text-text-secondary hover:text-text-primary"
@@ -198,6 +298,22 @@ export function ProjetoDetailPage() {
                     >
                       <Upload size={12} /> Usar em nova análise
                     </Link>
+                    <button
+                      aria-label="Renomear sondagem"
+                      onClick={() => handleRenameSondagem(s.id, s.nome)}
+                      disabled={busyRowId === s.id}
+                      className="rounded p-1 hover:bg-elevated hover:text-text-primary disabled:opacity-40"
+                    >
+                      <Pencil size={14} />
+                    </button>
+                    <button
+                      aria-label="Excluir sondagem"
+                      onClick={() => handleDeleteSondagem(s.id, s.nome)}
+                      disabled={busyRowId === s.id}
+                      className="rounded p-1 hover:bg-accent-red/10 hover:text-accent-red disabled:opacity-40"
+                    >
+                      {busyRowId === s.id ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                    </button>
                   </div>
                 </div>
 

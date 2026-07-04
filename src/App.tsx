@@ -5,6 +5,7 @@ import { DashboardPage } from './pages/DashboardPage'
 import { PlaceholderPage } from './pages/PlaceholderPage'
 import { ProjetosPage } from './pages/ProjetosPage'
 import { ProjetoDetailPage } from './pages/ProjetoDetailPage'
+import { SondagensPage } from './pages/SondagensPage'
 
 export default function App() {
   return (
@@ -14,7 +15,7 @@ export default function App() {
         <Route path="projetos" element={<ProjetosPage />} />
         <Route path="projetos/:id" element={<ProjetoDetailPage />} />
         <Route path="analise" element={<AnalysisPage />} />
-        <Route path="sondagens" element={<PlaceholderPage title="Sondagens" />} />
+        <Route path="sondagens" element={<SondagensPage />} />
         <Route path="manual" element={<PlaceholderPage title="Manual / Ajuda" />} />
       </Route>
     </Routes>

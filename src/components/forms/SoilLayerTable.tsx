@@ -50,6 +50,7 @@ export function SoilLayerTable({ value, onChange }: SoilLayerTableProps) {
             <th className="pb-2">Referência</th>
             <th className="pb-2">Topo (m)</th>
             <th className="pb-2">Base (m)</th>
+            <th className="pb-2">Furo em x (m)</th>
             <th className="pb-2">N_SPT</th>
             <th className="pb-2">Tipo</th>
             <th className="pb-2">c' (kPa)</th>
@@ -96,6 +97,20 @@ export function SoilLayerTable({ value, onChange }: SoilLayerTableProps) {
                     />
                   </td>
                 ))}
+                <td className="py-1 pr-2">
+                  <input
+                    type="number"
+                    step="0.01"
+                    placeholder="—"
+                    disabled={!depthMode}
+                    value={layer.sondagem_x ?? ''}
+                    onChange={(e) =>
+                      update(i, { sondagem_x: Number.isNaN(e.target.valueAsNumber) ? undefined : e.target.valueAsNumber })
+                    }
+                    title="Posição x do furo de sondagem (pé do talude = 0). Se definida, a camada vira uma faixa reta na elevação medida no furo, em vez de acompanhar o terreno em todo o perfil."
+                    className="w-20 rounded bg-elevated px-2 py-1 text-text-primary focus:outline-none disabled:opacity-40"
+                  />
+                </td>
                 <td className="py-1 pr-2">
                   <input
                     type="number"
@@ -148,8 +163,11 @@ export function SoilLayerTable({ value, onChange }: SoilLayerTableProps) {
               </tr>
               {(estimate || depthMode) && (
                 <tr>
-                  <td colSpan={10} className="pb-1 pl-2 font-sans text-xs text-brand">
-                    {depthMode && 'Medido a partir do terreno natural local (acompanha a topografia). '}
+                  <td colSpan={11} className="pb-1 pl-2 font-sans text-xs text-brand">
+                    {depthMode &&
+                      (layer.sondagem_x != null
+                        ? `Medido no terreno em x=${layer.sondagem_x}m (faixa reta nessa elevação, não acompanha o terreno fora desse ponto). `
+                        : 'Medido a partir do terreno natural local (acompanha a topografia). ')}
                     {estimate?.classification}
                   </td>
                 </tr>

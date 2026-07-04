@@ -58,8 +58,15 @@ function groundLevelAt(x: number, terrain?: Point[]): number {
  * definidos, senão y_top/y_base absolutos. Se nada estiver definido, retorna
  * limites que nunca casam com nenhum y (camada malformada é ignorada, não
  * derruba o cálculo).
+ *
+ * Quando a camada tem sondagem_x definido (veio de um furo de sondagem
+ * pontual), a profundidade é medida sempre no terreno NESSE x fixo, não no x
+ * de avaliação corrente — a camada vira uma faixa reta na elevação real
+ * medida no furo, em vez de assumir (sem base) que a mesma profundidade se
+ * repete em todo o perfil, acompanhando a topografia.
  */
-function effectiveBounds(layer: Layer, groundLevel: number): { top: number; base: number } {
+function effectiveBounds(layer: Layer, x: number, terrain: Point[] | undefined): { top: number; base: number } {
+  const groundLevel = groundLevelAt(layer.sondagem_x ?? x, terrain)
   const top = layer.depth_top != null ? groundLevel - layer.depth_top : layer.y_top ?? -Infinity
   const base = layer.depth_base != null ? groundLevel - layer.depth_base : layer.y_base ?? Infinity
   return { top, base }
@@ -92,7 +99,7 @@ export function soilAt(
     if (fillZones) {
       for (let i = 0; i < fillZones.length; i++) {
         const zone = fillZones[i]
-        const { top, base } = effectiveBounds(zone, groundLevel)
+        const { top, base } = effectiveBounds(zone, x, terrain)
         if (y <= top && y >= base) {
           return { c: zone.c, phi: zone.phi, gamma: zone.gamma, sourceKey: `zone:${i}`, sourceName: zone.name }
         }
@@ -113,7 +120,7 @@ export function soilAt(
 
   for (let i = 0; i < layers.length; i++) {
     const layer = layers[i]
-    const { top, base } = effectiveBounds(layer, groundLevel)
+    const { top, base } = effectiveBounds(layer, x, terrain)
     if (y <= top && y >= base) {
       return { c: layer.c, phi: layer.phi, gamma: layer.gamma, sourceKey: `layer:${i}`, sourceName: layer.name }
     }
@@ -162,16 +169,17 @@ function collectBoundaries(
   y_base: number,
   layers: Layer[],
   fillZones: Layer[] | undefined,
-  groundLevel: number
+  x: number,
+  terrain: Point[] | undefined
 ): number[] {
-  const ys = new Set<number>([y_top, y_base, groundLevel])
+  const ys = new Set<number>([y_top, y_base, groundLevelAt(x, terrain)])
   for (const zone of fillZones ?? []) {
-    const { top, base } = effectiveBounds(zone, groundLevel)
+    const { top, base } = effectiveBounds(zone, x, terrain)
     if (Number.isFinite(top)) ys.add(top)
     if (Number.isFinite(base)) ys.add(base)
   }
   for (const layer of layers) {
-    const { top, base } = effectiveBounds(layer, groundLevel)
+    const { top, base } = effectiveBounds(layer, x, terrain)
     if (Number.isFinite(top)) ys.add(top)
     if (Number.isFinite(base)) ys.add(base)
   }
@@ -204,7 +212,7 @@ function integrateWeight(
   terrain: Point[] | undefined
 ): WeightBreakdown {
   const groundLevel = groundLevelAt(xm, terrain)
-  const boundaries = collectBoundaries(y_top, y_base, layers, fillZones, groundLevel)
+  const boundaries = collectBoundaries(y_top, y_base, layers, fillZones, xm, terrain)
 
   let gammaH_aterro = 0
   let gammaH_fundacao = 0

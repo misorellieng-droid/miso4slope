@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Calculator, FileDown, FolderOpen, Loader2, Play, Save } from 'lucide-react'
+import { Calculator, FileDown, FolderOpen, Loader2, Pencil, Play, Save, Trash2 } from 'lucide-react'
 import { usePersistedState } from '../lib/persist'
 import { supabase } from '../lib/supabase'
-import { listAnalyses, loadAnalysis, saveAnalysis, type SavedAnalysis } from '../lib/analysisStorage'
+import { deleteAnalysis, listAnalyses, loadAnalysis, renameAnalysis, saveAnalysis, type SavedAnalysis } from '../lib/analysisStorage'
 import { camadasToLayers, getSondagemCamadas } from '../lib/projetosStorage'
 import { exportReportToPdf } from '../lib/exportPdf'
 import { GeometryForm } from '../components/forms/GeometryForm'
@@ -126,6 +126,7 @@ export function AnalysisPage() {
   const [showLoadList, setShowLoadList] = useState(false)
   const [savedAnalyses, setSavedAnalyses] = useState<SavedAnalysis[]>([])
   const [loadingList, setLoadingList] = useState(false)
+  const [busyAnalysisId, setBusyAnalysisId] = useState<string | null>(null)
   const [exportingPdf, setExportingPdf] = useState(false)
   const canvasRef = useRef<SlopeCanvasHandle>(null)
 
@@ -215,6 +216,35 @@ export function AnalysisPage() {
       setSaveMessage(err instanceof Error ? `Erro ao listar: ${err.message}` : 'Erro ao listar análises salvas.')
     } finally {
       setLoadingList(false)
+    }
+  }
+
+  const handleDeleteSavedAnalysis = async (id: string, nomeSecao: string, e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (!window.confirm(`Excluir a análise "${nomeSecao}"? Não pode ser desfeito.`)) return
+    setBusyAnalysisId(id)
+    try {
+      await deleteAnalysis(id)
+      setSavedAnalyses(await listAnalyses())
+    } catch (err) {
+      setSaveMessage(err instanceof Error ? `Erro ao excluir: ${err.message}` : 'Erro ao excluir análise.')
+    } finally {
+      setBusyAnalysisId(null)
+    }
+  }
+
+  const handleRenameSavedAnalysis = async (id: string, nomeSecao: string, e: React.MouseEvent) => {
+    e.stopPropagation()
+    const novoNome = window.prompt('Nome da seção/análise:', nomeSecao)
+    if (!novoNome || novoNome === nomeSecao) return
+    setBusyAnalysisId(id)
+    try {
+      await renameAnalysis(id, novoNome)
+      setSavedAnalyses(await listAnalyses())
+    } catch (err) {
+      setSaveMessage(err instanceof Error ? `Erro ao renomear: ${err.message}` : 'Erro ao renomear análise.')
+    } finally {
+      setBusyAnalysisId(null)
     }
   }
 
@@ -397,10 +427,10 @@ export function AnalysisPage() {
           {!loadingList && savedAnalyses.length > 0 && (
             <ul className="space-y-1 text-sm">
               {savedAnalyses.map((a) => (
-                <li key={a.id}>
+                <li key={a.id} className="flex items-center rounded hover:bg-elevated">
                   <button
                     onClick={() => handleLoadAnalysis(a.id)}
-                    className="flex w-full items-center justify-between rounded px-2 py-1.5 text-left hover:bg-elevated"
+                    className="flex flex-1 items-center justify-between px-2 py-1.5 text-left"
                   >
                     <span>
                       <span className="text-text-primary">{a.projeto_nome}</span>
@@ -409,6 +439,22 @@ export function AnalysisPage() {
                     <span className="font-mono text-xs text-text-secondary">
                       {new Date(a.created_at).toLocaleDateString('pt-BR')}
                     </span>
+                  </button>
+                  <button
+                    aria-label="Renomear análise"
+                    onClick={(e) => handleRenameSavedAnalysis(a.id, a.nome_secao, e)}
+                    disabled={busyAnalysisId === a.id}
+                    className="rounded p-1.5 text-text-secondary hover:text-text-primary disabled:opacity-40"
+                  >
+                    <Pencil size={14} />
+                  </button>
+                  <button
+                    aria-label="Excluir análise"
+                    onClick={(e) => handleDeleteSavedAnalysis(a.id, a.nome_secao, e)}
+                    disabled={busyAnalysisId === a.id}
+                    className="rounded p-1.5 text-text-secondary hover:text-accent-red disabled:opacity-40"
+                  >
+                    {busyAnalysisId === a.id ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
                   </button>
                 </li>
               ))}

@@ -25,24 +25,20 @@ export interface SlopeCanvasHandle {
 }
 
 const MARGIN_X = 10
-const MARGIN_X_WITH_LABELS = 34 // espaço extra à esquerda pra caber "cota — nome da camada" sem invadir o desenho
+const MARGIN_X_WITH_LABELS = 16 // espaço extra à esquerda pra caber a cota de cada limite de camada
 const MARGIN_Y = 6
-// exportadas para o painel do relatório PDF usar exatamente as mesmas cores do desenho
+// exportadas para o painel do relatório PDF usar exatamente as mesmas cores (e opacidade) do desenho
 export const LAYER_COLORS = ['#3498DB', '#9B59B6', '#1ABC9C', '#F39C12', '#95A5A6', '#E67E22']
 export const FILL_COLOR = '#D4AC0D' // corpo do aterro — fora da paleta de LAYER_COLORS, pra nunca coincidir com uma camada
 export const ZONE_COLORS = ['#B7950B', '#9A7D0A', '#7D6608'] // zonas de compactação — tons da mesma família do aterro
+export const LAYER_FILL_OPACITY = 0.12 // opacidade do preenchimento de cada camada no croqui — a legenda usa a mesma, pra bater visualmente
 const LAYER_SAMPLES = 40
 const BOUNDARY_LABEL_MIN_GAP = 3.2 // espaçamento vertical mínimo entre rótulos de limite de camada, pra não sobrepor
-const BOUNDARY_LABEL_NAME_MAXLEN = 22
 // limite dentro do qual um limite de camada é considerado "já coberto" pela cota de
 // bancada mais próxima e não ganha um rótulo separado — sem isso, um limite bem perto
 // de uma bancada (comum perto do pé/crista) cria um rótulo redundante que, ao ser
 // empurrado pelo anti-colisão, arrasta em cascata todos os rótulos abaixo dele
 const BOUNDARY_LABEL_BENCH_TOL = 1.2
-
-function truncateName(name: string, maxLen = BOUNDARY_LABEL_NAME_MAXLEN): string {
-  return name.length > maxLen ? `${name.slice(0, maxLen - 1)}…` : name
-}
 
 /**
  * Cor de um trecho de material dentro de uma fatia (materialSegments),
@@ -72,9 +68,10 @@ function fsColor(fs: number): string {
 /**
  * Contorno de uma camada de fundação entre xMin/xMax. Camadas com
  * depth_top/depth_base acompanham a superfície do terreno local (ondulam
- * com ela); camadas com y_top/y_base absolutos formam uma faixa horizontal
- * reta, como antes — os dois casos usam o mesmo polígono, só a fórmula do
- * topo/base muda.
+ * com ela) — a menos que a camada tenha um sondagem_x fixo, caso em que o
+ * terreno é medido sempre nesse x (a camada vira uma faixa reta na
+ * elevação real do furo, não uma que ondula pelo perfil todo). Camadas com
+ * y_top/y_base absolutos formam uma faixa horizontal reta, como sempre.
  */
 function layerOutline(
   layer: Layer,
@@ -83,7 +80,7 @@ function layerOutline(
   terrain: Point[] | undefined
 ): Point[] {
   const xs = Array.from({ length: LAYER_SAMPLES }, (_, i) => xMin + ((xMax - xMin) * i) / (LAYER_SAMPLES - 1))
-  const groundAt = (x: number) => (terrain && terrain.length ? groundY(x, terrain) : 0)
+  const groundAt = (x: number) => (terrain && terrain.length ? groundY(layer.sondagem_x ?? x, terrain) : 0)
 
   const top = xs.map((x) => {
     const g = groundAt(x)
@@ -100,10 +97,11 @@ function layerOutline(
 /**
  * Topo/base de uma camada num x de referência — usado para rotular a
  * profundidade adotada em cada limite de camada (mesma lógica de
- * layerOutline, mas só para um ponto, não o polígono inteiro).
+ * layerOutline, mas só para um ponto, não o polígono inteiro). Respeita
+ * sondagem_x pelo mesmo motivo.
  */
 function layerBoundaryY(layer: Layer, x: number, terrain: Point[] | undefined): { top: number; base: number } {
-  const g = terrain && terrain.length ? groundY(x, terrain) : 0
+  const g = terrain && terrain.length ? groundY(layer.sondagem_x ?? x, terrain) : 0
   return {
     top: layer.depth_top != null ? g - layer.depth_top : layer.y_top ?? g,
     base: layer.depth_base != null ? g - layer.depth_base : layer.y_base ?? g,
@@ -118,7 +116,12 @@ export const SlopeCanvas = forwardRef<SlopeCanvasHandle, SlopeCanvasProps>(funct
   const profile = useMemo(() => buildProfile(geometry, mode), [geometry, mode])
   const refTerrain = useMemo(() => effectiveNaturalTerrain(geometry, mode), [geometry, mode])
 
-  const toeIndex = 1
+  // o pé é sempre exatamente x=0 por construção (buildProfile), único ponto nessa posição —
+  // não presumir um índice fixo (ex.: 1): o trecho de aproximação antes do pé pode ter mais de
+  // um ponto quando o terreno natural informado tem vários pontos com x<=0, e um índice fixo
+  // nesse caso cortava a linha grossa do talude num ponto que não é o pé real (parte do
+  // terreno natural inclinado entrava como se fosse a face do talude — o efeito de "canaleta em V")
+  const toeIndex = Math.max(1, profile.findIndex((p) => p.x === 0))
   const crestIndex = profile.length - 2 // último ponto antes do trecho plano da plataforma
 
   const waterY = -geometry.water_table_depth
@@ -159,13 +162,13 @@ export const SlopeCanvas = forwardRef<SlopeCanvasHandle, SlopeCanvasProps>(funct
   const toPath = (pts: Point[]) => pts.map((p) => `${p.x},${p.y}`).join(' ')
 
   /**
-   * Rótulo de cada limite de camada — cota + nome do material (para o
-   * usuário ver, direto na figura, a descrição do que está em cada faixa,
-   * sem precisar cruzar com uma legenda separada). Dois cuidados:
+   * Rótulo de cada limite de camada — só a cota (o nome do material vive na
+   * legenda ao lado, colorida na mesma cor, pra não duplicar informação e
+   * poluir o croqui). Dois cuidados:
    *
    * 1. Quando o limite de uma camada coincide com o de outra (a base de uma
-   *    é o topo da seguinte), os dois nomes são agrupados no mesmo rótulo em
-   *    vez de gerar dois rótulos sobrepostos no mesmo ponto.
+   *    é o topo da seguinte), os dois são agrupados no mesmo rótulo em vez
+   *    de gerar dois rótulos sobrepostos no mesmo ponto.
    * 2. Rótulos vizinhos demais (comum com camadas finas ou terreno natural
    *    inclinado) são empurrados verticalmente pra não se sobrepor — uma
    *    linha guia tracejada liga o rótulo deslocado até a altura real do
@@ -181,17 +184,13 @@ export const SlopeCanvas = forwardRef<SlopeCanvasHandle, SlopeCanvasProps>(funct
     // usar xMin pegaria o valor no limite do perfil informado (ou além dele,
     // sujeito ao clamp de groundY), que pode não ter nada a ver com a
     // elevação real da camada onde ela aparece desenhada
-    const groups: { y: number; names: string[]; colorIndex: number }[] = []
+    const groups: { y: number; colorIndex: number }[] = []
     layers.forEach((layer, layerIndex) => {
       const { top, base } = layerBoundaryY(layer, 0, refTerrain)
       for (const y of [top, base]) {
         if (!Number.isFinite(y) || benchYs.some((b) => Math.abs(b - y) < BOUNDARY_LABEL_BENCH_TOL)) continue
         const existing = groups.find((g) => Math.abs(g.y - y) < EPS)
-        if (existing) {
-          if (!existing.names.includes(layer.name)) existing.names.push(layer.name)
-        } else {
-          groups.push({ y, names: [layer.name], colorIndex: layerIndex })
-        }
+        if (!existing) groups.push({ y, colorIndex: layerIndex })
       }
     })
 
@@ -259,7 +258,7 @@ export const SlopeCanvas = forwardRef<SlopeCanvasHandle, SlopeCanvasProps>(funct
       .map((g) => ({
         trueY: g.y,
         placedY: placedByGroup.get(g)!,
-        text: `${(g.y + toeElevation).toFixed(2)}m — ${g.names.map((n) => truncateName(n)).join(' / ')}`,
+        text: `${(g.y + toeElevation).toFixed(2)}m`,
         color: LAYER_COLORS[g.colorIndex % LAYER_COLORS.length],
       }))
   }, [layers, refTerrain, profile, toeIndex, crestIndex, geometry.toe_elevation])
@@ -299,7 +298,7 @@ export const SlopeCanvas = forwardRef<SlopeCanvasHandle, SlopeCanvasProps>(funct
               key={layer.id ?? i}
               points={toPath(layerOutline(layer, xMin, xMax, refTerrain))}
               fill={LAYER_COLORS[i % LAYER_COLORS.length]}
-              opacity={highlightLayer === i ? 0.35 : 0.12}
+              opacity={highlightLayer === i ? 0.35 : LAYER_FILL_OPACITY}
               stroke={highlightLayer === i ? LAYER_COLORS[i % LAYER_COLORS.length] : 'none'}
               strokeWidth={0.15}
             />
@@ -356,8 +355,12 @@ export const SlopeCanvas = forwardRef<SlopeCanvasHandle, SlopeCanvasProps>(funct
             strokeWidth={0.25}
           />
 
-          {/* terreno natural original por baixo do aterro (auditoria: onde o solo realmente estava) */}
-          {geometry.natural_terrain && geometry.natural_terrain.length > 0 && (
+          {/* terreno natural original por baixo do aterro (auditoria: onde o solo realmente estava) —
+              só faz sentido no aterro (solo novo construído por cima do terreno original); no corte o
+              terreno de referência já aparece pelo contorno das próprias camadas de fundação, e essa
+              mesma linha, cruzando o talude e a plataforma numa inclinação diferente da face de corte,
+              é o que parecia uma "canaleta em V" sem relação clara com o desenho */}
+          {mode === 'aterro' && geometry.natural_terrain && geometry.natural_terrain.length > 0 && (
             <polyline
               points={toPath(
                 Array.from({ length: LAYER_SAMPLES }, (_, i) => {
@@ -483,11 +486,12 @@ export const SlopeCanvas = forwardRef<SlopeCanvasHandle, SlopeCanvasProps>(funct
           </g>
         )}
 
-        {/* cota + descrição do material em cada limite de camada — no canto
-            esquerdo, como uma régua de perfil (mesma referência que
-            layerOutline usa pra desenhar as camadas, avaliada num único x).
-            Rótulos deslocados pra evitar sobreposição ganham uma linha guia
-            tracejada até a altura real do limite. */}
+        {/* cota de cada limite de camada — no canto esquerdo, como uma régua de
+            perfil (mesma referência que layerOutline usa pra desenhar as
+            camadas, avaliada num único x), colorida igual à camada (mesma cor
+            da legenda ao lado, pra identificar qual é qual sem repetir o nome
+            no croqui). Rótulos deslocados pra evitar sobreposição ganham uma
+            linha guia tracejada até a altura real do limite. */}
         {showGrid &&
           layers.length > 0 &&
           layerBoundaryLabels.map((b, i) => {

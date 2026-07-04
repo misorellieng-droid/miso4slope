@@ -27,6 +27,8 @@ export interface ProjetoSondagem {
   na_profundidade: number | null
   file_name: string | null
   file_path: string | null
+  page_start: number | null
+  page_end: number | null
   created_at: string
   camadasCount: number
 }
@@ -37,6 +39,11 @@ export interface ProjetoDetail {
   descricao: string | null
   analises: ProjetoAnalise[]
   sondagens: ProjetoSondagem[]
+}
+
+export interface SondagemSummary extends ProjetoSondagem {
+  projeto_id: string
+  projeto_nome: string
 }
 
 export interface CamadaRow {
@@ -93,6 +100,12 @@ export async function deleteProjeto(id: string): Promise<void> {
   if (error) throw error
 }
 
+export async function updateProjeto(id: string, patch: { nome?: string; descricao?: string | null }): Promise<void> {
+  if (!supabase) throw new Error('Supabase não configurado.')
+  const { error } = await supabase.from('projetos').update(patch).eq('id', id)
+  if (error) throw error
+}
+
 export async function getProjetoDetail(id: string): Promise<ProjetoDetail> {
   if (!supabase) throw new Error('Supabase não configurado.')
 
@@ -112,7 +125,7 @@ export async function getProjetoDetail(id: string): Promise<ProjetoDetail> {
 
   const { data: sondagens, error: sondagensError } = await supabase
     .from('sondagens')
-    .select('id, nome, cota_terreno, na_profundidade, file_name, file_path, created_at, camadas(count)')
+    .select('id, nome, cota_terreno, na_profundidade, file_name, file_path, page_start, page_end, created_at, camadas(count)')
     .eq('projeto_id', id)
     .order('created_at', { ascending: false })
   if (sondagensError) throw sondagensError
@@ -140,10 +153,41 @@ export async function getProjetoDetail(id: string): Promise<ProjetoDetail> {
       na_profundidade: s.na_profundidade,
       file_name: s.file_name,
       file_path: s.file_path,
+      page_start: s.page_start,
+      page_end: s.page_end,
       created_at: s.created_at,
       camadasCount: s.camadas?.[0]?.count ?? 0,
     })),
   }
+}
+
+/** Todas as sondagens salvas, de todos os projetos — visão geral usada na página Sondagens do menu. */
+export async function listAllSondagens(): Promise<SondagemSummary[]> {
+  if (!supabase) return []
+
+  const { data, error } = await supabase
+    .from('sondagens')
+    .select(
+      'id, nome, cota_terreno, na_profundidade, file_name, file_path, page_start, page_end, created_at, camadas(count), projetos(id, nome)'
+    )
+    .order('created_at', { ascending: false })
+  if (error) throw error
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (data ?? []).map((s: any) => ({
+    id: s.id,
+    nome: s.nome,
+    cota_terreno: s.cota_terreno,
+    na_profundidade: s.na_profundidade,
+    file_name: s.file_name,
+    file_path: s.file_path,
+    page_start: s.page_start,
+    page_end: s.page_end,
+    created_at: s.created_at,
+    camadasCount: s.camadas?.[0]?.count ?? 0,
+    projeto_id: s.projetos?.id ?? '',
+    projeto_nome: s.projetos?.nome ?? '—',
+  }))
 }
 
 export async function getSondagemCamadas(sondagemId: string): Promise<CamadaRow[]> {

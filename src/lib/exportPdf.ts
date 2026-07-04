@@ -1,7 +1,7 @@
 import { jsPDF } from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import { SLICE_COLUMNS } from '../components/slope/SlicesTable'
-import { FILL_COLOR, LAYER_COLORS, ZONE_COLORS, type CanvasBounds } from '../components/slope/SlopeCanvas'
+import { FILL_COLOR, LAYER_COLORS, LAYER_FILL_OPACITY, ZONE_COLORS, type CanvasBounds } from '../components/slope/SlopeCanvas'
 import { effectiveNaturalTerrain, groundY } from '../engine/geometry'
 import type { PartialFS } from '../engine/fsDecomposition'
 import { resolveFillZones } from '../engine/soil'
@@ -137,9 +137,9 @@ async function svgToJpegDataUrl(
   }
 }
 
-/** Topo/base de uma camada num x de referência — mesma lógica usada no desenho (SlopeCanvas). */
+/** Topo/base de uma camada num x de referência — mesma lógica usada no desenho (SlopeCanvas), incl. sondagem_x. */
 function layerBoundaryY(layer: Layer, x: number, terrain: Point[] | undefined): { top: number; base: number } {
-  const g = terrain && terrain.length ? groundY(x, terrain) : 0
+  const g = terrain && terrain.length ? groundY(layer.sondagem_x ?? x, terrain) : 0
   return {
     top: layer.depth_top != null ? g - layer.depth_top : layer.y_top ?? g,
     base: layer.depth_base != null ? g - layer.depth_base : layer.y_base ?? g,
@@ -149,6 +149,19 @@ function layerBoundaryY(layer: Layer, x: number, terrain: Point[] | undefined): 
 function hexToRgb(hex: string): [number, number, number] {
   const n = Number.parseInt(hex.replace('#', ''), 16)
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255]
+}
+
+/**
+ * Mistura uma cor com fundo branco numa opacidade dada — reproduz em RGB
+ * sólido (PDF não tem canvas com transparência real por trás fácil de
+ * controlar aqui) a mesma aparência pastel que a camada tem no croqui
+ * (preenchida a LAYER_FILL_OPACITY sobre o fundo branco da página), pra a
+ * cor da legenda bater com a cor da faixa, em vez de uma cor sólida vívida
+ * sem relação com o que aparece no desenho.
+ */
+function blendWithWhite(hex: string, alpha: number): [number, number, number] {
+  const [r, g, b] = hexToRgb(hex)
+  return [Math.round(r * alpha + 255 * (1 - alpha)), Math.round(g * alpha + 255 * (1 - alpha)), Math.round(b * alpha + 255 * (1 - alpha))]
 }
 
 /** Um item do painel lateral — camada de fundação, corpo do aterro, ou zona de compactação — já com o topo/base resolvidos em elevação absoluta. */
@@ -266,8 +279,10 @@ function drawLayerPanel(doc: jsPDF, items: PanelItem[], x: number, y: number, wi
       startY = Math.max(cy, targetCenter - blockHeight / 2)
     }
 
-    doc.setFillColor(...hexToRgb(item.color))
-    doc.rect(x, startY - swatchSize + 1, swatchSize, swatchSize, 'F')
+    doc.setFillColor(...blendWithWhite(item.color, LAYER_FILL_OPACITY))
+    doc.setDrawColor(...hexToRgb(item.color))
+    doc.setLineWidth(0.15)
+    doc.rect(x, startY - swatchSize + 1, swatchSize, swatchSize, 'FD')
 
     doc.setFont('helvetica', 'bold')
     doc.setTextColor(0, 0, 0)

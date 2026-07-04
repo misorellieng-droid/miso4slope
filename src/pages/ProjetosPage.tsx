@@ -1,14 +1,15 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { FileText, FolderOpen, Layers, Loader2, Plus } from 'lucide-react'
+import { FileText, FolderOpen, Layers, Loader2, Pencil, Plus, Trash2 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
-import { createProjeto, listProjetos, type ProjetoSummary } from '../lib/projetosStorage'
+import { createProjeto, deleteProjeto, listProjetos, updateProjeto, type ProjetoSummary } from '../lib/projetosStorage'
 
 export function ProjetosPage() {
   const [projetos, setProjetos] = useState<ProjetoSummary[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
+  const [busyId, setBusyId] = useState<string | null>(null)
 
   const load = async () => {
     setLoading(true)
@@ -39,6 +40,43 @@ export function ProjetosPage() {
       setError(err instanceof Error ? err.message : 'Erro ao criar projeto.')
     } finally {
       setCreating(false)
+    }
+  }
+
+  const handleRename = async (p: ProjetoSummary, e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    const nome = window.prompt('Nome do projeto:', p.nome)
+    if (!nome || nome === p.nome) return
+    setBusyId(p.id)
+    try {
+      await updateProjeto(p.id, { nome })
+      await load()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erro ao renomear projeto.')
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  const handleDelete = async (p: ProjetoSummary, e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    if (
+      !window.confirm(
+        `Isso apaga o projeto "${p.nome}" e todas as suas análises e sondagens (${p.analisesCount} análise(s), ${p.sondagensCount} sondagem(ns)). Não pode ser desfeito. Continuar?`
+      )
+    ) {
+      return
+    }
+    setBusyId(p.id)
+    try {
+      await deleteProjeto(p.id)
+      await load()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erro ao excluir projeto.')
+    } finally {
+      setBusyId(null)
     }
   }
 
@@ -102,6 +140,24 @@ export function ProjetosPage() {
                 </span>
                 <span className="flex items-center gap-1">
                   <Layers size={14} /> {p.sondagensCount} sondage{p.sondagensCount === 1 ? 'm' : 'ns'}
+                </span>
+                <span className="flex items-center gap-1">
+                  <button
+                    aria-label="Renomear projeto"
+                    onClick={(e) => handleRename(p, e)}
+                    disabled={busyId === p.id}
+                    className="rounded p-1 hover:bg-elevated hover:text-text-primary disabled:opacity-40"
+                  >
+                    <Pencil size={14} />
+                  </button>
+                  <button
+                    aria-label="Excluir projeto"
+                    onClick={(e) => handleDelete(p, e)}
+                    disabled={busyId === p.id}
+                    className="rounded p-1 hover:bg-accent-red/10 hover:text-accent-red disabled:opacity-40"
+                  >
+                    {busyId === p.id ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                  </button>
                 </span>
               </div>
             </Link>

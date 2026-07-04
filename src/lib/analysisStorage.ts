@@ -98,6 +98,18 @@ export async function listAnalyses(): Promise<SavedAnalysis[]> {
   }))
 }
 
+export async function deleteAnalysis(id: string): Promise<void> {
+  if (!supabase) throw new Error('Supabase não configurado.')
+  const { error } = await supabase.from('analises').delete().eq('id', id)
+  if (error) throw error
+}
+
+export async function renameAnalysis(id: string, nomeSecao: string): Promise<void> {
+  if (!supabase) throw new Error('Supabase não configurado.')
+  const { error } = await supabase.from('analises').update({ nome_secao: nomeSecao }).eq('id', id)
+  if (error) throw error
+}
+
 export async function loadAnalysis(id: string): Promise<AnalysisSnapshot> {
   if (!supabase) throw new Error('Supabase não configurado.')
 

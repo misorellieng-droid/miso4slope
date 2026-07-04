@@ -1,18 +1,17 @@
 import { useState } from 'react'
 import { AlertTriangle, Check, FileUp, Loader2, Save } from 'lucide-react'
-import { classifySoilFromDescription, convertSondagemToLayers, mockExtractSondagem } from '../../engine/sondagem'
-import type { Layer, SondagemExtractionResult, SondagemLayer, SoilClass } from '../../engine/types'
+import { convertSondagemToLayers, mockExtractSondagem } from '../../engine/sondagem'
+import type { Layer, SondagemExtractionResult } from '../../engine/types'
 import { supabase } from '../../lib/supabase'
 import { saveSondagem, uploadSondagemFile, type SondagemUpload } from '../../lib/sondagemStorage'
 import { NumberField } from './NumberField'
+import { SondagemLayersEditor } from './SondagemLayersEditor'
 
 interface SondagemImportProps {
   toeElevation: number | undefined
   onImport: (layers: Layer[], waterTableDepth?: number) => void
   onClose: () => void
 }
-
-const SOIL_CLASS_LABELS: Record<SoilClass, string> = { granular: 'Granular', coesivo: 'Coesivo' }
 
 export function SondagemImport({ toeElevation, onImport, onClose }: SondagemImportProps) {
   const [file, setFile] = useState<File | null>(null)
@@ -74,14 +73,6 @@ export function SondagemImport({ toeElevation, onImport, onClose }: SondagemImpo
     } finally {
       setSaving(false)
     }
-  }
-
-  const updateLayer = (index: number, patch: Partial<SondagemLayer>) => {
-    if (!result) return
-    setResult({
-      ...result,
-      layers: result.layers.map((l, i) => (i === index ? { ...l, ...patch } : l)),
-    })
   }
 
   const canImport = result && collarElevation != null && toeElevation != null
@@ -155,77 +146,10 @@ export function SondagemImport({ toeElevation, onImport, onClose }: SondagemImpo
 
       {result && (
         <div className="space-y-3">
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[640px] border-separate border-spacing-0 text-xs">
-              <thead>
-                <tr className="text-left text-text-secondary">
-                  <th className="pb-1">Prof. topo (m)</th>
-                  <th className="pb-1">Prof. base (m)</th>
-                  <th className="pb-1">Descrição</th>
-                  <th className="pb-1">N_SPT</th>
-                  <th className="pb-1">Tipo</th>
-                </tr>
-              </thead>
-              <tbody className="font-mono">
-                {result.layers.map((layer, i) => (
-                  <tr key={i} className="border-t border-border">
-                    <td className="py-1 pr-2">
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={layer.depth_top}
-                        onChange={(e) => updateLayer(i, { depth_top: e.target.valueAsNumber })}
-                        className="w-20 rounded bg-elevated px-2 py-1 text-text-primary focus:outline-none"
-                      />
-                    </td>
-                    <td className="py-1 pr-2">
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={layer.depth_base}
-                        onChange={(e) => updateLayer(i, { depth_base: e.target.valueAsNumber })}
-                        className="w-20 rounded bg-elevated px-2 py-1 text-text-primary focus:outline-none"
-                      />
-                    </td>
-                    <td className="py-1 pr-2">
-                      <input
-                        value={layer.description}
-                        onChange={(e) =>
-                          updateLayer(i, {
-                            description: e.target.value,
-                            soil_class: classifySoilFromDescription(e.target.value),
-                          })
-                        }
-                        className="w-64 rounded bg-elevated px-2 py-1 font-sans text-text-primary focus:outline-none"
-                      />
-                    </td>
-                    <td className="py-1 pr-2">
-                      <input
-                        type="number"
-                        step="1"
-                        value={layer.n_spt}
-                        onChange={(e) => updateLayer(i, { n_spt: e.target.valueAsNumber })}
-                        className="w-14 rounded bg-elevated px-2 py-1 text-text-primary focus:outline-none"
-                      />
-                    </td>
-                    <td className="py-1">
-                      <select
-                        value={layer.soil_class}
-                        onChange={(e) => updateLayer(i, { soil_class: e.target.value as SoilClass })}
-                        className="rounded bg-elevated px-2 py-1 font-sans text-text-primary focus:outline-none"
-                      >
-                        {(Object.keys(SOIL_CLASS_LABELS) as SoilClass[]).map((c) => (
-                          <option key={c} value={c}>
-                            {SOIL_CLASS_LABELS[c]}
-                          </option>
-                        ))}
-                      </select>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <SondagemLayersEditor
+            layers={result.layers}
+            onChange={(layers) => setResult({ ...result, layers })}
+          />
 
           {result.water_table_depth != null && (
             <div className="text-xs text-text-secondary">
