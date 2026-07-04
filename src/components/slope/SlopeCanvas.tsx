@@ -25,11 +25,24 @@ export interface SlopeCanvasHandle {
 }
 
 const MARGIN_X = 10
+const MARGIN_X_WITH_LABELS = 34 // espaço extra à esquerda pra caber "cota — nome da camada" sem invadir o desenho
 const MARGIN_Y = 6
-const LAYER_COLORS = ['#3498DB', '#9B59B6', '#1ABC9C', '#F39C12', '#95A5A6', '#E67E22']
-const FILL_COLOR = '#D4AC0D' // corpo do aterro — fora da paleta de LAYER_COLORS, pra nunca coincidir com uma camada
-const ZONE_COLORS = ['#B7950B', '#9A7D0A', '#7D6608'] // zonas de compactação — tons da mesma família do aterro
+// exportadas para o painel do relatório PDF usar exatamente as mesmas cores do desenho
+export const LAYER_COLORS = ['#3498DB', '#9B59B6', '#1ABC9C', '#F39C12', '#95A5A6', '#E67E22']
+export const FILL_COLOR = '#D4AC0D' // corpo do aterro — fora da paleta de LAYER_COLORS, pra nunca coincidir com uma camada
+export const ZONE_COLORS = ['#B7950B', '#9A7D0A', '#7D6608'] // zonas de compactação — tons da mesma família do aterro
 const LAYER_SAMPLES = 40
+const BOUNDARY_LABEL_MIN_GAP = 3.2 // espaçamento vertical mínimo entre rótulos de limite de camada, pra não sobrepor
+const BOUNDARY_LABEL_NAME_MAXLEN = 22
+// limite dentro do qual um limite de camada é considerado "já coberto" pela cota de
+// bancada mais próxima e não ganha um rótulo separado — sem isso, um limite bem perto
+// de uma bancada (comum perto do pé/crista) cria um rótulo redundante que, ao ser
+// empurrado pelo anti-colisão, arrasta em cascata todos os rótulos abaixo dele
+const BOUNDARY_LABEL_BENCH_TOL = 1.2
+
+function truncateName(name: string, maxLen = BOUNDARY_LABEL_NAME_MAXLEN): string {
+  return name.length > maxLen ? `${name.slice(0, maxLen - 1)}…` : name
+}
 
 /**
  * Cor de um trecho de material dentro de uma fatia (materialSegments),
@@ -127,8 +140,10 @@ export const SlopeCanvas = forwardRef<SlopeCanvasHandle, SlopeCanvasProps>(funct
       yMax = Math.max(yMax, result.circle.yc)
     }
 
+    const marginLeft = layers.length > 0 ? MARGIN_X_WITH_LABELS : MARGIN_X
+
     return {
-      xMin: xMin - MARGIN_X,
+      xMin: xMin - marginLeft,
       xMax: xMax + MARGIN_X,
       yMin: yMin - MARGIN_Y,
       yMax: yMax + MARGIN_Y,
@@ -143,28 +158,111 @@ export const SlopeCanvas = forwardRef<SlopeCanvasHandle, SlopeCanvasProps>(funct
 
   const toPath = (pts: Point[]) => pts.map((p) => `${p.x},${p.y}`).join(' ')
 
-  const layerBoundaryElevations = useMemo(() => {
-    const EPS = 1e-6
-    // cotas de bancada já rotuladas pelo bloco "cotas" (ex.: o pé, y=0) —
-    // sem isso, uma camada cujo limite coincide com uma bancada (comum no
-    // aterro: o topo da 1ª camada de fundação é sempre o pé) geraria um
-    // rótulo duplicado sobreposto ao mesmo ponto.
+  /**
+   * Rótulo de cada limite de camada — cota + nome do material (para o
+   * usuário ver, direto na figura, a descrição do que está em cada faixa,
+   * sem precisar cruzar com uma legenda separada). Dois cuidados:
+   *
+   * 1. Quando o limite de uma camada coincide com o de outra (a base de uma
+   *    é o topo da seguinte), os dois nomes são agrupados no mesmo rótulo em
+   *    vez de gerar dois rótulos sobrepostos no mesmo ponto.
+   * 2. Rótulos vizinhos demais (comum com camadas finas ou terreno natural
+   *    inclinado) são empurrados verticalmente pra não se sobrepor — uma
+   *    linha guia tracejada liga o rótulo deslocado até a altura real do
+   *    limite que ele descreve.
+   */
+  const layerBoundaryLabels = useMemo(() => {
+    const EPS = 1e-3
+    // cotas de bancada já rotuladas pelo bloco "cotas" (ex.: o pé, y=0)
     const benchYs = profile.slice(toeIndex, crestIndex + 1).map((p) => p.y)
-    const ys: number[] = []
-    for (const layer of layers) {
-      const { top, base } = layerBoundaryY(layer, xMin, refTerrain)
+
+    // avaliado no pé (x=0), não em xMin (que agora é bem à esquerda, fora do
+    // trecho onde o talude de fato existe) — com terreno natural inclinado,
+    // usar xMin pegaria o valor no limite do perfil informado (ou além dele,
+    // sujeito ao clamp de groundY), que pode não ter nada a ver com a
+    // elevação real da camada onde ela aparece desenhada
+    const groups: { y: number; names: string[]; colorIndex: number }[] = []
+    layers.forEach((layer, layerIndex) => {
+      const { top, base } = layerBoundaryY(layer, 0, refTerrain)
       for (const y of [top, base]) {
-        if (
-          Number.isFinite(y) &&
-          !ys.some((existing) => Math.abs(existing - y) < EPS) &&
-          !benchYs.some((b) => Math.abs(b - y) < EPS)
-        ) {
-          ys.push(y)
+        if (!Number.isFinite(y) || benchYs.some((b) => Math.abs(b - y) < BOUNDARY_LABEL_BENCH_TOL)) continue
+        const existing = groups.find((g) => Math.abs(g.y - y) < EPS)
+        if (existing) {
+          if (!existing.names.includes(layer.name)) existing.names.push(layer.name)
+        } else {
+          groups.push({ y, names: [layer.name], colorIndex: layerIndex })
         }
       }
+    })
+
+    // as cotas de bancada (rotuladas por um bloco separado, presas à altura
+    // do próprio terreno) entram nessa mesma passada de anti-colisão como
+    // obstáculos fixos — sem isso, um limite de camada bem perto de uma
+    // bancada (comum perto do pé/crista) acaba com o texto colado nela.
+    //
+    // processa em sequências de rótulos móveis entre dois obstáculos fixos
+    // (ou os limites do desenho, se não houver). dentro de cada sequência,
+    // tenta primeiro só empurrar pra baixo o mínimo necessário (mantém a
+    // posição real sempre que possível); se mesmo assim não couber entre os
+    // dois obstáculos fixos com o espaçamento mínimo, distribui os rótulos
+    // uniformemente no espaço disponível — evita o rótulo colidir com uma
+    // bancada fixa mais abaixo que um empurrão só-pra-baixo não enxergaria.
+    type Group = (typeof groups)[number]
+    const entries: { y: number; group?: Group }[] = [
+      ...groups.map((g) => ({ y: g.y, group: g })),
+      ...benchYs.map((y) => ({ y })),
+    ]
+    entries.sort((a, b) => b.y - a.y)
+
+    const placed = new Array<number>(entries.length)
+    let idx = 0
+    while (idx < entries.length) {
+      if (!entries[idx].group) {
+        placed[idx] = entries[idx].y
+        idx++
+        continue
+      }
+      const start = idx
+      while (idx < entries.length && entries[idx].group) idx++
+      const end = idx
+      const trueYs = entries.slice(start, end).map((e) => e.y)
+      const n = trueYs.length
+      const upperBound = start > 0 ? placed[start - 1] : Infinity
+
+      const greedy: number[] = []
+      let prev = upperBound
+      for (const y of trueYs) {
+        const p = Math.min(y, prev - BOUNDARY_LABEL_MIN_GAP)
+        greedy.push(p)
+        prev = p
+      }
+
+      const lowerBound = end < entries.length ? entries[end].y : -Infinity
+      if (!Number.isFinite(lowerBound) || greedy[n - 1] >= lowerBound + BOUNDARY_LABEL_MIN_GAP) {
+        for (let k = 0; k < n; k++) placed[start + k] = greedy[k]
+      } else {
+        const top = Number.isFinite(upperBound) ? upperBound : greedy[0] + BOUNDARY_LABEL_MIN_GAP
+        const step = (top - lowerBound) / (n + 1)
+        for (let k = 0; k < n; k++) placed[start + k] = top - step * (k + 1)
+      }
     }
-    return ys.sort((a, b) => b - a)
-  }, [layers, xMin, refTerrain, profile, toeIndex, crestIndex])
+
+    const toeElevation = geometry.toe_elevation ?? 0
+    const placedByGroup = new Map<Group, number>()
+    entries.forEach((e, i) => {
+      if (e.group) placedByGroup.set(e.group, placed[i])
+    })
+
+    return groups
+      .slice()
+      .sort((a, b) => b.y - a.y)
+      .map((g) => ({
+        trueY: g.y,
+        placedY: placedByGroup.get(g)!,
+        text: `${(g.y + toeElevation).toFixed(2)}m — ${g.names.map((n) => truncateName(n)).join(' / ')}`,
+        color: LAYER_COLORS[g.colorIndex % LAYER_COLORS.length],
+      }))
+  }, [layers, refTerrain, profile, toeIndex, crestIndex, geometry.toe_elevation])
 
   const arcPoints: Point[] = useMemo(() => {
     if (!result) return []
@@ -385,28 +483,27 @@ export const SlopeCanvas = forwardRef<SlopeCanvasHandle, SlopeCanvasProps>(funct
           </g>
         )}
 
-        {/* profundidade/cota adotada em cada limite de camada — no canto esquerdo,
-            como uma régua de perfil (mesma referência que layerOutline usa
-            para desenhar as camadas, avaliada num único x). */}
-        {showGrid && layers.length > 0 && (
-          <g fontSize={2.2} fill="var(--color-text-secondary)" fontFamily="'JetBrains Mono', monospace">
-            {layerBoundaryElevations.map((y, i) => (
-              <g key={i}>
-                <line
-                  x1={0.5}
-                  y1={yMax - y}
-                  x2={2.5}
-                  y2={yMax - y}
-                  stroke="var(--color-text-secondary)"
-                  strokeWidth={0.15}
-                />
-                <text x={3} y={yMax - y + 0.8}>
-                  {(y + (geometry.toe_elevation ?? 0)).toFixed(2)}m
+        {/* cota + descrição do material em cada limite de camada — no canto
+            esquerdo, como uma régua de perfil (mesma referência que
+            layerOutline usa pra desenhar as camadas, avaliada num único x).
+            Rótulos deslocados pra evitar sobreposição ganham uma linha guia
+            tracejada até a altura real do limite. */}
+        {showGrid &&
+          layers.length > 0 &&
+          layerBoundaryLabels.map((b, i) => {
+            const displacedY = Math.abs(b.trueY - b.placedY) > 1e-6 ? yMax - b.placedY : null
+            return (
+              <g key={i} fontSize={2} fontFamily="'JetBrains Mono', monospace">
+                <line x1={0.5} y1={yMax - b.trueY} x2={2} y2={yMax - b.trueY} stroke={b.color} strokeWidth={0.2} />
+                {displacedY != null && (
+                  <line x1={2} y1={yMax - b.trueY} x2={2.4} y2={displacedY} stroke={b.color} strokeWidth={0.1} strokeDasharray="0.3 0.3" />
+                )}
+                <text x={2.6} y={yMax - b.placedY + 0.7} fill={b.color}>
+                  {b.text}
                 </text>
               </g>
-            ))}
-          </g>
-        )}
+            )
+          })}
       </svg>
 
       {result && (

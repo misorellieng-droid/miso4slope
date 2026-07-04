@@ -1,7 +1,7 @@
 import { jsPDF } from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import { SLICE_COLUMNS } from '../components/slope/SlicesTable'
-import type { CanvasBounds } from '../components/slope/SlopeCanvas'
+import { FILL_COLOR, LAYER_COLORS, ZONE_COLORS, type CanvasBounds } from '../components/slope/SlopeCanvas'
 import { effectiveNaturalTerrain, groundY } from '../engine/geometry'
 import type { PartialFS } from '../engine/fsDecomposition'
 import { resolveFillZones } from '../engine/soil'
@@ -146,6 +146,11 @@ function layerBoundaryY(layer: Layer, x: number, terrain: Point[] | undefined): 
   }
 }
 
+function hexToRgb(hex: string): [number, number, number] {
+  const n = Number.parseInt(hex.replace('#', ''), 16)
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255]
+}
+
 /** Um item do painel lateral — camada de fundação, corpo do aterro, ou zona de compactação — já com o topo/base resolvidos em elevação absoluta. */
 interface PanelItem {
   name: string
@@ -154,7 +159,7 @@ interface PanelItem {
   gamma: number
   top: number
   base: number
-  isDepth: boolean // true = "top"/"base" são profundidades (mostrar "prof."); false = cotas absolutas (mostrar "cota")
+  color: string // mesma cor usada para esta camada/aterro no desenho — liga visualmente painel e figura
 }
 
 /**
@@ -165,6 +170,12 @@ interface PanelItem {
  * as camadas de fundação/corte. Sem isso o painel mostrava só a fundação —
  * o próprio material do aterro (a faixa hachurada, normalmente a maior do
  * desenho) nunca aparecia.
+ *
+ * Avaliado no pé (x=0) — mesma referência usada pelas etiquetas de limite de
+ * camada no desenho (SlopeCanvas) — não em xMin do canvas (que fica fora do
+ * trecho onde o talude de fato existe); com terreno natural inclinado, usar
+ * xMin pegaria um valor sem relação com a elevação real da camada onde ela
+ * aparece desenhada.
  */
 function buildPanelItems(
   mode: AnalysisMode,
@@ -172,26 +183,41 @@ function buildPanelItems(
   fill: FillMaterial,
   fillZones: FillZone[],
   geometry: SlopeGeometry,
-  refX: number,
   terrain: Point[] | undefined
 ): PanelItem[] {
+  const refX = 0
   const items: PanelItem[] = []
 
   if (mode === 'aterro') {
     const resolvedZones = fillZones.length ? resolveFillZones(fillZones, geometry.total_height) : []
-    for (const z of resolvedZones) {
-      items.push({ name: z.name, c: z.c, phi: z.phi, gamma: z.gamma, top: z.y_top!, base: z.y_base!, isDepth: false })
-    }
+    resolvedZones.forEach((z, i) => {
+      items.push({
+        name: z.name,
+        c: z.c,
+        phi: z.phi,
+        gamma: z.gamma,
+        top: z.y_top!,
+        base: z.y_base!,
+        color: ZONE_COLORS[i % ZONE_COLORS.length],
+      })
+    })
     const fillTop = resolvedZones.length ? resolvedZones[resolvedZones.length - 1].y_base! : geometry.total_height
     const fillBase = terrain && terrain.length ? groundY(refX, terrain) : 0
-    items.push({ name: 'Aterro (corpo)', c: fill.c, phi: fill.phi, gamma: fill.gamma, top: fillTop, base: fillBase, isDepth: false })
+    items.push({
+      name: 'Aterro (corpo)',
+      c: fill.c,
+      phi: fill.phi,
+      gamma: fill.gamma,
+      top: fillTop,
+      base: fillBase,
+      color: FILL_COLOR,
+    })
   }
 
-  for (const l of layers) {
+  layers.forEach((l, i) => {
     const { top, base } = layerBoundaryY(l, refX, terrain)
-    const isDepth = l.depth_top != null || l.depth_base != null
-    items.push({ name: l.name, c: l.c, phi: l.phi, gamma: l.gamma, top, base, isDepth })
-  }
+    items.push({ name: l.name, c: l.c, phi: l.phi, gamma: l.gamma, top, base, color: LAYER_COLORS[i % LAYER_COLORS.length] })
+  })
 
   return items
 }
@@ -203,41 +229,34 @@ interface LayerPanelAlign {
 }
 
 /**
- * Painel lateral com os dados de cada material (nome, profundidade adotada
- * no limite superior/inferior, c'/φ'/γ) — ao lado do desenho, no estilo de
- * uma coluna de sondagem/perfil geotécnico. Texto puro (não autoTable)
- * porque a coluna é estreita (1/3 da página) e o layout vertical por item
- * aproveita melhor o espaço do que uma tabela larga.
+ * Painel lateral com um resumo de cada material (nome curto + c'/φ'/γ) — ao
+ * lado do desenho. Nome do material, profundidade e limites já aparecem
+ * diretamente na figura (junto de cada linha de limite de camada), então o
+ * painel fica enxuto: só o essencial pra conferir os parâmetros numéricos,
+ * com um retângulo colorido igual à cor da camada/aterro no desenho, pra
+ * ligar visualmente painel e figura sem repetir texto.
  *
- * Quando `align` está disponível, cada bloco é posicionado à altura (em mm)
+ * Quando `align` está disponível, cada linha é posicionada à altura (em mm)
  * correspondente à posição vertical real do item no desenho — não
- * simplesmente empilhado em sequência — para que o texto fique de fato ao
- * lado da faixa que descreve. Nunca sobrepõe o bloco anterior: se o alvo
- * alinhado cair antes do fim do bloco anterior, cai de volta no
+ * simplesmente empilhada em sequência. Nunca sobrepõe a linha anterior: se
+ * o alvo alinhado cair antes do fim da linha anterior, cai de volta no
  * empilhamento sequencial normal.
  */
-function drawLayerPanel(
-  doc: jsPDF,
-  items: PanelItem[],
-  x: number,
-  y: number,
-  width: number,
-  title: string,
-  align: LayerPanelAlign | null,
-  toeElevation: number | undefined
-): number {
+function drawLayerPanel(doc: jsPDF, items: PanelItem[], x: number, y: number, width: number, title: string, align: LayerPanelAlign | null): number {
   doc.setFontSize(9)
   doc.setFont('helvetica', 'bold')
   doc.setTextColor(0, 0, 0)
   doc.text(title, x, y)
 
   let cy = y + 5.5
+  const swatchSize = 3
+  const textX = x + swatchSize + 1.5
 
   items.forEach((item, i) => {
     doc.setFontSize(7.5)
     doc.setFont('helvetica', 'bold')
-    const nameLines: string[] = doc.splitTextToSize(pdfSafe(item.name), width)
-    const blockHeight = nameLines.length * 3.2 + 0.8 + 5 * 3.4 + 1.5
+    const nameLines: string[] = doc.splitTextToSize(pdfSafe(item.name), width - swatchSize - 1.5)
+    const blockHeight = nameLines.length * 3.2 + 3.4 + 1.5
 
     let startY = cy
     if (align) {
@@ -247,31 +266,17 @@ function drawLayerPanel(
       startY = Math.max(cy, targetCenter - blockHeight / 2)
     }
 
-    doc.setFontSize(7.5)
+    doc.setFillColor(...hexToRgb(item.color))
+    doc.rect(x, startY - swatchSize + 1, swatchSize, swatchSize, 'F')
+
     doc.setFont('helvetica', 'bold')
     doc.setTextColor(0, 0, 0)
-    doc.text(nameLines, x, startY)
-    let ly = startY + nameLines.length * 3.2 + 0.8
+    doc.text(nameLines, textX, startY)
+    const ly = startY + nameLines.length * 3.2
 
     doc.setFont('helvetica', 'normal')
     doc.setFontSize(7)
-    // com a cota do pé/plataforma informada, mostra a cota absoluta do
-    // projeto (pé + limite) em vez da profundidade/elevação relativa —
-    // vale para qualquer item, mesmo os definidos por profundidade
-    const prefix = toeElevation != null ? 'cota' : item.isDepth ? 'prof.' : 'cota'
-    const topDisplay = toeElevation != null ? item.top + toeElevation : item.top
-    const baseDisplay = toeElevation != null ? item.base + toeElevation : item.base
-    const lines = [
-      `Limite sup.: ${prefix} ${fmt(topDisplay)} m`,
-      `Limite inf.: ${prefix} ${fmt(baseDisplay)} m`,
-      `c' = ${fmt(item.c)} kPa`,
-      `phi' = ${fmt(item.phi)}°`,
-      `gamma = ${fmt(item.gamma)} kN/m³`,
-    ]
-    for (const line of lines) {
-      doc.text(line, x, ly)
-      ly += 3.4
-    }
+    doc.text(`c'=${fmt(item.c)} kPa  phi'=${fmt(item.phi)}°  gamma=${fmt(item.gamma)} kN/m³`, textX, ly)
 
     cy = startY + blockHeight
     if (i < items.length - 1) {
@@ -362,19 +367,10 @@ export async function exportReportToPdf(data: ReportData, fileName = 'miso4slope
       }
 
       doc.addImage(dataUrl, 'JPEG', margin, y, imgWidth, imgHeight)
-      const panelItems = buildPanelItems(mode, layers, fill, fillZones, geometry, bounds?.xMin ?? 0, terrain)
+      const panelItems = buildPanelItems(mode, layers, fill, fillZones, geometry, terrain)
       const panelTitle = mode === 'corte' ? 'Camadas (corte)' : 'Materiais (aterro + fundação)'
       const panelAlign: LayerPanelAlign | null = bounds ? { bounds, imgTop: y, imgHeight } : null
-      const panelBottom = drawLayerPanel(
-        doc,
-        panelItems,
-        panelX,
-        y + 4,
-        panelWidth,
-        panelTitle,
-        panelAlign,
-        geometry.toe_elevation
-      )
+      const panelBottom = drawLayerPanel(doc, panelItems, panelX, y + 4, panelWidth, panelTitle, panelAlign)
       y = Math.max(y + imgHeight, panelBottom) + 8
     } catch {
       // se a rasterização falhar por qualquer motivo, o relatório segue sem a imagem
