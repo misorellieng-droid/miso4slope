@@ -1,7 +1,9 @@
 import { useState } from 'react'
-import { AlertTriangle, FileUp, Loader2 } from 'lucide-react'
+import { AlertTriangle, Check, FileUp, Loader2, Save } from 'lucide-react'
 import { classifySoilFromDescription, convertSondagemToLayers, mockExtractSondagem } from '../../engine/sondagem'
 import type { Layer, SondagemExtractionResult, SondagemLayer, SoilClass } from '../../engine/types'
+import { supabase } from '../../lib/supabase'
+import { saveSondagem, uploadSondagemFile, type SondagemUpload } from '../../lib/sondagemStorage'
 import { NumberField } from './NumberField'
 
 interface SondagemImportProps {
@@ -13,18 +15,64 @@ interface SondagemImportProps {
 const SOIL_CLASS_LABELS: Record<SoilClass, string> = { granular: 'Granular', coesivo: 'Coesivo' }
 
 export function SondagemImport({ toeElevation, onImport, onClose }: SondagemImportProps) {
-  const [fileName, setFileName] = useState<string | null>(null)
+  const [file, setFile] = useState<File | null>(null)
   const [collarElevation, setCollarElevation] = useState<number | undefined>(toeElevation)
   const [extracting, setExtracting] = useState(false)
   const [result, setResult] = useState<SondagemExtractionResult | null>(null)
 
+  const [uploadedFile, setUploadedFile] = useState<SondagemUpload | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [saveMessage, setSaveMessage] = useState<string | null>(null)
+
   const handleExtract = async () => {
     setExtracting(true)
+    setUploadedFile(null)
+    setSaveMessage(null)
     try {
-      const r = await mockExtractSondagem()
+      // envio do arquivo original (se selecionado) em paralelo com a
+      // extração — o envio já é real, só a leitura do conteúdo continua
+      // simulada (mock) enquanto a IA com visão computacional não é conectada
+      const [r, uploaded] = await Promise.all([
+        mockExtractSondagem(),
+        file && supabase
+          ? uploadSondagemFile(file).then(
+              (u) => ({ ok: true as const, u }),
+              (err) => ({ ok: false as const, err })
+            )
+          : Promise.resolve(null),
+      ])
       setResult(r)
+      if (uploaded) {
+        if (uploaded.ok) {
+          setUploadedFile(uploaded.u)
+        } else {
+          setUploadedFile(null)
+          setSaveMessage(
+            `Não foi possível enviar o arquivo (${uploaded.err instanceof Error ? uploaded.err.message : 'erro desconhecido'}) — verifique se o bucket "sondagens" foi criado no Supabase.`
+          )
+        }
+      }
     } finally {
       setExtracting(false)
+    }
+  }
+
+  const handleSaveSondagem = async () => {
+    if (!result) return
+    const projetoNome = window.prompt('Nome do projeto:', '')
+    if (!projetoNome) return
+    const nomeSondagem = window.prompt('Nome da sondagem (ex.: SP-01):', 'SP-01')
+    if (!nomeSondagem) return
+
+    setSaving(true)
+    setSaveMessage(null)
+    try {
+      await saveSondagem(projetoNome, nomeSondagem, collarElevation ?? null, uploadedFile, file?.name ?? null, result)
+      setSaveMessage('Sondagem salva.')
+    } catch (err) {
+      setSaveMessage(err instanceof Error ? `Erro ao salvar: ${err.message}` : 'Erro ao salvar sondagem.')
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -57,8 +105,9 @@ export function SondagemImport({ toeElevation, onImport, onClose }: SondagemImpo
       <div className="mb-3 flex items-start gap-2 rounded-md border border-accent-amber/40 bg-accent-amber/10 p-2 text-xs text-accent-amber">
         <AlertTriangle size={14} className="mt-0.5 shrink-0" />
         <span>
-          Extração simulada (mock) — a leitura automática do arquivo por IA ainda não está conectada. Os dados
-          abaixo são de exemplo; sempre confira contra o boletim antes de importar.
+          A leitura do conteúdo ainda é simulada (mock) — a extração por IA com visão computacional ainda não está
+          conectada, os dados abaixo são de exemplo; sempre confira contra o boletim antes de importar. O envio do
+          arquivo em si já é real: ao salvar a sondagem, o arquivo original fica guardado para conferência futura.
         </span>
       </div>
 
@@ -67,12 +116,15 @@ export function SondagemImport({ toeElevation, onImport, onClose }: SondagemImpo
           <span className="text-xs text-text-secondary">Arquivo do boletim (PDF/imagem)</span>
           <label className="flex cursor-pointer items-center gap-2 rounded-md border border-dashed border-border bg-elevated px-2 py-1.5 text-sm text-text-secondary hover:border-brand">
             <FileUp size={16} />
-            {fileName ?? 'Escolher arquivo...'}
+            {file?.name ?? 'Escolher arquivo...'}
             <input
               type="file"
               accept="image/*,application/pdf"
               className="hidden"
-              onChange={(e) => setFileName(e.target.files?.[0]?.name ?? null)}
+              onChange={(e) => {
+                setFile(e.target.files?.[0] ?? null)
+                setUploadedFile(null)
+              }}
             />
           </label>
         </label>
@@ -181,14 +233,31 @@ export function SondagemImport({ toeElevation, onImport, onClose }: SondagemImpo
             </div>
           )}
 
-          <button
-            onClick={handleImport}
-            disabled={!canImport}
-            className="rounded-md bg-accent-green px-3 py-2 text-sm font-medium disabled:opacity-40"
-            style={{ color: '#0D1B2A' }}
-          >
-            Importar para Solo / Fundação
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleImport}
+              disabled={!canImport}
+              className="rounded-md bg-accent-green px-3 py-2 text-sm font-medium disabled:opacity-40"
+              style={{ color: '#0D1B2A' }}
+            >
+              Importar para Solo / Fundação
+            </button>
+            <button
+              onClick={handleSaveSondagem}
+              disabled={!supabase || saving}
+              className="flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm text-text-secondary hover:text-text-primary disabled:opacity-40"
+              title={!supabase ? 'Configure VITE_SUPABASE_URL/VITE_SUPABASE_ANON_KEY para habilitar' : undefined}
+            >
+              {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+              Salvar sondagem no projeto
+            </button>
+            {saveMessage && <span className="text-xs text-text-secondary">{saveMessage}</span>}
+          </div>
+          {uploadedFile && (
+            <div className="flex items-center gap-1 text-xs text-accent-green">
+              <Check size={12} /> Arquivo enviado — será vinculado à sondagem ao salvar.
+            </div>
+          )}
         </div>
       )}
     </div>

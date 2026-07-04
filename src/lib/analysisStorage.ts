@@ -33,8 +33,9 @@ export interface SavedAnalysis {
 
 // Sem login ainda: os "projetos" são identificados só pelo nome (não há
 // user_id real). Reaproveita um projeto existente com o mesmo nome em vez
-// de duplicar a cada salvamento.
-async function ensureProjeto(nome: string): Promise<string> {
+// de duplicar a cada salvamento. Exportado para reaproveitar em outros
+// módulos que também vinculam dados a um projeto (ex.: sondagens).
+export async function ensureProjeto(nome: string): Promise<string> {
   if (!supabase) throw new Error('Supabase não configurado.')
 
   const { data: existing, error: findError } = await supabase
