@@ -91,7 +91,7 @@ export function GeometryForm({ value, onChange, mode }: GeometryFormProps) {
         </div>
         <p className="mb-3 text-xs text-text-secondary">
           {mode === 'corte'
-            ? 'Pontos x/y relativos ao pé (0,0), do mais negativo ao mais positivo. Representa o terreno original antes do corte — substitui o trecho plano padrão antes do pé e serve de referência de profundidade para as camadas de solo (o próprio material natural exposto pelo corte) definidas por "profundidade do terreno" na aba Solo/Fundação. Deixe vazio para manter o terreno plano (comportamento padrão).'
+            ? 'Pontos x/y relativos ao pé (0,0), do mais negativo ao mais positivo. Representa o terreno original antes do corte e serve de referência de profundidade para as camadas de solo (o próprio material natural exposto pelo corte) definidas por "profundidade do terreno" na aba Solo/Camadas. O pé no corte é a plataforma de corte (cota de projeto onde se escava até) — o trecho do desenho antes do pé fica sempre plano, já que ali o terreno original foi escavado; este perfil não altera esse trecho, só a profundidade das camadas. Deixe vazio para manter o terreno plano na cota da crista (comportamento padrão).'
             : 'Pontos x/y relativos ao pé (0,0), do mais negativo ao mais positivo. Substitui o trecho plano padrão antes do pé e serve de referência de profundidade para camadas de solo definidas por "profundidade do terreno" na aba Solo/Fundação — inclusive por baixo do próprio aterro. Deixe vazio para manter o terreno plano (comportamento padrão).'}
         </p>
         <div className="space-y-2">

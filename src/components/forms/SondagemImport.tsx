@@ -130,8 +130,8 @@ export function SondagemImport({ toeElevation, onImport, onClose }: SondagemImpo
 
       {toeElevation == null && (
         <div className="mb-3 text-xs text-accent-amber">
-          Defina a "Cota do pé do talude" na aba Geometria para poder converter as profundidades do furo em posição
-          dentro do talude.
+          Defina a cota do pé/plataforma na aba Geometria (aterro: "Cota do pé do talude"; corte: "Cota da
+          plataforma de corte") para poder converter as profundidades do furo em posição dentro do talude.
         </div>
       )}
 
