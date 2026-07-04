@@ -98,18 +98,33 @@ export function SoilLayerTable({ value, onChange }: SoilLayerTableProps) {
                   </td>
                 ))}
                 <td className="py-1 pr-2">
-                  <input
-                    type="number"
-                    step="0.01"
-                    placeholder="—"
-                    disabled={!depthMode}
-                    value={layer.sondagem_x ?? ''}
-                    onChange={(e) =>
-                      update(i, { sondagem_x: Number.isNaN(e.target.valueAsNumber) ? undefined : e.target.valueAsNumber })
+                  {/* o title fica no span (não no input) porque a maioria dos navegadores
+                      suprime o tooltip de um input desabilitado — sem isso, o campo ficava
+                      cinza e sem nenhuma explicação visível de por que/quando usá-lo */}
+                  <span
+                    title={
+                      depthMode
+                        ? 'Posição x do furo de sondagem (pé do talude = 0). Se definida, a camada vira uma faixa reta na elevação medida no furo, em vez de acompanhar o terreno em todo o perfil.'
+                        : 'Só se aplica em modo "Prof. do terreno" — clique no botão da coluna Referência pra ativar. Em modo Elevação (y), a camada já é uma faixa reta em cota fixa, não precisa disso.'
                     }
-                    title="Posição x do furo de sondagem (pé do talude = 0). Se definida, a camada vira uma faixa reta na elevação medida no furo, em vez de acompanhar o terreno em todo o perfil."
-                    className="w-20 rounded bg-elevated px-2 py-1 text-text-primary focus:outline-none disabled:opacity-40"
-                  />
+                  >
+                    <input
+                      type="number"
+                      step="0.01"
+                      placeholder="—"
+                      disabled={!depthMode}
+                      value={layer.sondagem_x ?? ''}
+                      onChange={(e) =>
+                        update(i, { sondagem_x: Number.isNaN(e.target.valueAsNumber) ? undefined : e.target.valueAsNumber })
+                      }
+                      className="w-20 rounded bg-elevated px-2 py-1 text-text-primary focus:outline-none disabled:opacity-40"
+                    />
+                  </span>
+                  {!depthMode && (
+                    <div className="whitespace-nowrap font-sans text-[10px] leading-tight text-text-secondary">
+                      só em Prof. do terreno
+                    </div>
+                  )}
                 </td>
                 <td className="py-1 pr-2">
                   <input

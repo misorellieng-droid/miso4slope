@@ -42,6 +42,12 @@ function computeBenchRises(bench_height: number, total_height: number, remainder
  * último ponto — é o datum fixo do resto da geometria construída — mesmo
  * que o terreno informado não bata exatamente em y=0 no x=0 (o segmento
  * final simplesmente conecta o último ponto do terreno ao pé.
+ *
+ * Só chamada com o terreno natural em modo aterro. No corte o pé é a
+ * "plataforma de corte" — uma cota de projeto (onde se escava até), não o
+ * terreno original — então não faz sentido esse trecho ir buscar a forma
+ * do terreno natural informado (que já foi escavado ali); ganha sempre o
+ * trecho plano padrão, como a plataforma da crista já ganha (ver buildProfile).
  */
 function buildApproachSegment(naturalTerrain: Point[] | undefined): Point[] {
   if (!naturalTerrain || naturalTerrain.length === 0) {
@@ -74,7 +80,7 @@ export function buildProfile(geo: SlopeGeometry, mode: AnalysisMode = 'aterro'):
   const { bench_height, slope_ratio, berm_width, total_height } = geo
   const bermSlope = (geo.berm_slope_pct ?? 0) / 100 // % → razão; positivo sobe, negativo desce
 
-  const points: Point[] = buildApproachSegment(geo.natural_terrain)
+  const points: Point[] = buildApproachSegment(mode === 'corte' ? undefined : geo.natural_terrain)
 
   let x = 0
   let y = 0

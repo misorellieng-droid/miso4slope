@@ -72,6 +72,41 @@ describe('buildProfile — inclinação da berma', () => {
   })
 })
 
+describe('buildProfile — trecho antes do pé no corte', () => {
+  // pé no corte é uma "plataforma de corte" (cota de projeto, onde se escava
+  // até) — não o terreno original, que ali já foi escavado. O trecho visual
+  // antes do pé deve ficar plano, mesmo com terreno natural customizado
+  // (que continua valendo para outras finalidades, como a profundidade das
+  // camadas de fundação, via effectiveNaturalTerrain — só não pra esse
+  // trecho específico do desenho).
+  const geo: SlopeGeometry = {
+    bench_height: 8,
+    slope_ratio: 1.5,
+    berm_width: 2.5,
+    total_height: 18,
+    water_table_depth: 10,
+    natural_terrain: [
+      { x: -20, y: 0 },
+      { x: 20, y: 15 },
+    ],
+  }
+
+  test('corte: o trecho antes do pé fica plano, ignorando o terreno natural customizado', () => {
+    const profile = buildProfile(geo, 'corte')
+    const beforeToe = profile.filter((p) => p.x <= 0)
+    expect(beforeToe.every((p) => p.y === beforeToe[0].y)).toBe(true)
+    expect(beforeToe[0].y).toBe(0)
+  })
+
+  test('aterro: o trecho antes do pé segue o terreno natural customizado (comportamento preservado)', () => {
+    const profile = buildProfile(geo, 'aterro')
+    const beforeToe = profile.filter((p) => p.x <= 0)
+    // com natural_terrain subindo de (-20,0) a (20,15), o ponto em x=-20 tem y=0 (não plano até lá)
+    const farLeft = beforeToe.find((p) => p.x === -20)
+    expect(farLeft?.y).toBeCloseTo(0)
+  })
+})
+
 describe('effectiveNaturalTerrain', () => {
   const geo: SlopeGeometry = {
     bench_height: 8,
