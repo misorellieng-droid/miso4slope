@@ -1,8 +1,10 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { Calculator, FileDown, FolderOpen, Loader2, Play, Save } from 'lucide-react'
 import { usePersistedState } from '../lib/persist'
 import { supabase } from '../lib/supabase'
 import { listAnalyses, loadAnalysis, saveAnalysis, type SavedAnalysis } from '../lib/analysisStorage'
+import { camadasToLayers, getSondagemCamadas } from '../lib/projetosStorage'
 import { exportReportToPdf } from '../lib/exportPdf'
 import { GeometryForm } from '../components/forms/GeometryForm'
 import { SoilLayerTable } from '../components/forms/SoilLayerTable'
@@ -78,6 +80,7 @@ const TABS_CORTE: { id: Tab; label: string }[] = [
 const STORAGE_PREFIX = 'miso4slope:analise:'
 
 export function AnalysisPage() {
+  const [searchParams, setSearchParams] = useSearchParams()
   const [geometry, setGeometry] = usePersistedState(STORAGE_PREFIX + 'geometry', DEFAULT_GEOMETRY)
   const [layers, setLayers] = usePersistedState(STORAGE_PREFIX + 'layers', DEFAULT_LAYERS)
   const [fill, setFill] = usePersistedState(STORAGE_PREFIX + 'fill', DEFAULT_FILL)
@@ -248,6 +251,34 @@ export function AnalysisPage() {
       setSaveMessage(err instanceof Error ? `Erro ao carregar: ${err.message}` : 'Erro ao carregar análise.')
     }
   }
+
+  // deep links vindos da página de Projetos: ?load=<análiseId> abre uma
+  // análise salva; ?importSondagemId=<sondagemId> importa as camadas de uma
+  // sondagem salva direto pra aba Solo/Fundação de uma análise nova
+  useEffect(() => {
+    const loadId = searchParams.get('load')
+    const importSondagemId = searchParams.get('importSondagemId')
+    if (!loadId && !importSondagemId) return
+
+    setSearchParams({}, { replace: true })
+
+    if (loadId) {
+      handleLoadAnalysis(loadId)
+    } else if (importSondagemId) {
+      getSondagemCamadas(importSondagemId)
+        .then((rows) => {
+          setLayers(camadasToLayers(rows))
+          setTab('solo')
+          setSaveMessage(
+            'Camadas da sondagem importadas — profundidades relativas ao terreno local; ajuste se necessário.'
+          )
+        })
+        .catch((err) =>
+          setSaveMessage(err instanceof Error ? `Erro ao importar sondagem: ${err.message}` : 'Erro ao importar sondagem.')
+        )
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const handleExportPdf = async () => {
     if (!result) return

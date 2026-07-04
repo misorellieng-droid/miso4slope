@@ -3,13 +3,16 @@ import { AppLayout } from './components/layout/AppLayout'
 import { AnalysisPage } from './pages/AnalysisPage'
 import { DashboardPage } from './pages/DashboardPage'
 import { PlaceholderPage } from './pages/PlaceholderPage'
+import { ProjetosPage } from './pages/ProjetosPage'
+import { ProjetoDetailPage } from './pages/ProjetoDetailPage'
 
 export default function App() {
   return (
     <Routes>
       <Route element={<AppLayout />}>
         <Route index element={<DashboardPage />} />
-        <Route path="projetos" element={<PlaceholderPage title="Projetos" />} />
+        <Route path="projetos" element={<ProjetosPage />} />
+        <Route path="projetos/:id" element={<ProjetoDetailPage />} />
         <Route path="analise" element={<AnalysisPage />} />
         <Route path="sondagens" element={<PlaceholderPage title="Sondagens" />} />
         <Route path="manual" element={<PlaceholderPage title="Manual / Ajuda" />} />
