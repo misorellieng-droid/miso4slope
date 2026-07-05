@@ -1,4 +1,4 @@
-import { groundY } from './geometry'
+import { groundY, layerReferenceGround } from './geometry'
 import type { CoverageType, FaceCoverage, FillMaterial, FillZone, Layer, MaterialSegment, Point } from './types'
 
 export interface SoilParams {
@@ -59,14 +59,15 @@ function groundLevelAt(x: number, terrain?: Point[]): number {
  * limites que nunca casam com nenhum y (camada malformada é ignorada, não
  * derruba o cálculo).
  *
- * Quando a camada tem sondagem_x definido (veio de um furo de sondagem
- * pontual), a profundidade é medida sempre no terreno NESSE x fixo, não no x
- * de avaliação corrente — a camada vira uma faixa reta na elevação real
- * medida no furo, em vez de assumir (sem base) que a mesma profundidade se
- * repete em todo o perfil, acompanhando a topografia.
+ * Quando a camada tem sondagem_collar ou sondagem_x definido (veio de um
+ * furo de sondagem pontual), a profundidade é medida sempre nessa
+ * referência fixa (ver layerReferenceGround), não no x de avaliação
+ * corrente — a camada vira uma faixa reta na elevação real medida no furo,
+ * em vez de assumir (sem base) que a mesma profundidade se repete em todo
+ * o perfil, acompanhando a topografia.
  */
 function effectiveBounds(layer: Layer, x: number, terrain: Point[] | undefined): { top: number; base: number } {
-  const groundLevel = groundLevelAt(layer.sondagem_x ?? x, terrain)
+  const groundLevel = layerReferenceGround(layer, x, terrain)
   const top = layer.depth_top != null ? groundLevel - layer.depth_top : layer.y_top ?? -Infinity
   const base = layer.depth_base != null ? groundLevel - layer.depth_base : layer.y_base ?? Infinity
   return { top, base }

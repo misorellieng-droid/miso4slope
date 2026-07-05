@@ -1,5 +1,5 @@
 import { forwardRef, useImperativeHandle, useMemo, useRef } from 'react'
-import { buildProfile, effectiveNaturalTerrain, groundY, type Point } from '../../engine/geometry'
+import { buildProfile, effectiveNaturalTerrain, groundY, layerReferenceGround, type Point } from '../../engine/geometry'
 import type { AnalysisMode, AnalysisResult, Layer, SlopeGeometry } from '../../engine/types'
 
 interface SlopeCanvasProps {
@@ -68,10 +68,11 @@ function fsColor(fs: number): string {
 /**
  * Contorno de uma camada de fundação entre xMin/xMax. Camadas com
  * depth_top/depth_base acompanham a superfície do terreno local (ondulam
- * com ela) — a menos que a camada tenha um sondagem_x fixo, caso em que o
- * terreno é medido sempre nesse x (a camada vira uma faixa reta na
- * elevação real do furo, não uma que ondula pelo perfil todo). Camadas com
- * y_top/y_base absolutos formam uma faixa horizontal reta, como sempre.
+ * com ela) — a menos que a camada tenha uma referência de sondagem fixa
+ * (sondagem_collar e/ou sondagem_x, ver layerReferenceGround), caso em que
+ * o terreno é medido sempre nessa referência (a camada vira uma faixa reta
+ * na elevação real do furo, não uma que ondula pelo perfil todo). Camadas
+ * com y_top/y_base absolutos formam uma faixa horizontal reta, como sempre.
  */
 function layerOutline(
   layer: Layer,
@@ -80,7 +81,7 @@ function layerOutline(
   terrain: Point[] | undefined
 ): Point[] {
   const xs = Array.from({ length: LAYER_SAMPLES }, (_, i) => xMin + ((xMax - xMin) * i) / (LAYER_SAMPLES - 1))
-  const groundAt = (x: number) => (terrain && terrain.length ? groundY(layer.sondagem_x ?? x, terrain) : 0)
+  const groundAt = (x: number) => layerReferenceGround(layer, x, terrain)
 
   const top = xs.map((x) => {
     const g = groundAt(x)
@@ -98,10 +99,10 @@ function layerOutline(
  * Topo/base de uma camada num x de referência — usado para rotular a
  * profundidade adotada em cada limite de camada (mesma lógica de
  * layerOutline, mas só para um ponto, não o polígono inteiro). Respeita
- * sondagem_x pelo mesmo motivo.
+ * a referência de sondagem pelo mesmo motivo.
  */
 function layerBoundaryY(layer: Layer, x: number, terrain: Point[] | undefined): { top: number; base: number } {
-  const g = terrain && terrain.length ? groundY(layer.sondagem_x ?? x, terrain) : 0
+  const g = layerReferenceGround(layer, x, terrain)
   return {
     top: layer.depth_top != null ? g - layer.depth_top : layer.y_top ?? g,
     base: layer.depth_base != null ? g - layer.depth_base : layer.y_base ?? g,

@@ -2,7 +2,7 @@ import { jsPDF } from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import { SLICE_COLUMNS } from '../components/slope/SlicesTable'
 import { FILL_COLOR, LAYER_COLORS, LAYER_FILL_OPACITY, ZONE_COLORS, type CanvasBounds } from '../components/slope/SlopeCanvas'
-import { effectiveNaturalTerrain, groundY } from '../engine/geometry'
+import { effectiveNaturalTerrain, groundY, layerReferenceGround } from '../engine/geometry'
 import type { PartialFS } from '../engine/fsDecomposition'
 import { resolveFillZones } from '../engine/soil'
 import type {
@@ -137,9 +137,9 @@ async function svgToJpegDataUrl(
   }
 }
 
-/** Topo/base de uma camada num x de referência — mesma lógica usada no desenho (SlopeCanvas), incl. sondagem_x. */
+/** Topo/base de uma camada num x de referência — mesma lógica usada no desenho (SlopeCanvas), incl. referência de sondagem. */
 function layerBoundaryY(layer: Layer, x: number, terrain: Point[] | undefined): { top: number; base: number } {
-  const g = terrain && terrain.length ? groundY(layer.sondagem_x ?? x, terrain) : 0
+  const g = layerReferenceGround(layer, x, terrain)
   return {
     top: layer.depth_top != null ? g - layer.depth_top : layer.y_top ?? g,
     base: layer.depth_base != null ? g - layer.depth_base : layer.y_base ?? g,

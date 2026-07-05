@@ -128,6 +128,32 @@ export function effectiveNaturalTerrain(geo: SlopeGeometry, mode: AnalysisMode):
 }
 
 /**
+ * Nível do terreno de referência para medir a profundidade de uma camada
+ * que veio de uma sondagem, num x de avaliação qualquer:
+ *
+ * - Se a camada tem sondagem_collar definida (cota da boca do furo, medida
+ *   real e pontual): usa essa cota diretamente, sempre — ela não precisa
+ *   bater com o terreno natural informado naquele x, que é só uma
+ *   generalização/aproximação do perfil (poucos pontos, entre furos
+ *   distantes). É essa cota que faz a camada virar uma faixa reta,
+ *   independente da forma do terreno em qualquer outro ponto do perfil.
+ * - Sem cota do furo, mas com a posição x do furo (sondagem_x) definida:
+ *   cai para o terreno natural avaliado nesse x fixo (comportamento antigo,
+ *   mantido por compatibilidade).
+ * - Sem nenhum dos dois: usa o terreno natural (ou 0) no x de avaliação
+ *   corrente — comportamento padrão, a camada acompanha a topografia local.
+ */
+export function layerReferenceGround(
+  layer: { sondagem_x?: number; sondagem_collar?: number },
+  x: number,
+  terrain: Point[] | undefined
+): number {
+  if (layer.sondagem_collar != null) return layer.sondagem_collar
+  const refX = layer.sondagem_x ?? x
+  return terrain && terrain.length ? groundY(refX, terrain) : 0
+}
+
+/**
  * Interpola a elevação de uma superfície poligonal em qualquer x.
  * Fora do intervalo do perfil, estende o valor da extremidade mais próxima.
  * Usada tanto para o perfil construído do talude quanto para o terreno

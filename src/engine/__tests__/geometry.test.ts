@@ -1,6 +1,35 @@
 import { describe, expect, test } from 'vitest'
-import { buildProfile, effectiveNaturalTerrain, groundY } from '../geometry'
+import { buildProfile, effectiveNaturalTerrain, groundY, layerReferenceGround } from '../geometry'
 import type { SlopeGeometry } from '../types'
+
+describe('layerReferenceGround', () => {
+  const terrain = [
+    { x: -20, y: 0 },
+    { x: 20, y: 15 },
+  ]
+
+  test('sondagem_collar tem prioridade e ignora o terreno natural completamente', () => {
+    // cota do furo (500) deliberadamente bem diferente do que o terreno natural diria em qualquer x
+    expect(layerReferenceGround({ sondagem_collar: 500, sondagem_x: -15 }, 0, terrain)).toBe(500)
+    expect(layerReferenceGround({ sondagem_collar: 500 }, 1000, terrain)).toBe(500)
+  })
+
+  test('sem sondagem_collar, cai para o terreno natural no sondagem_x fixo', () => {
+    // x=-15 no terreno acima: interpola pra y=1.875
+    expect(layerReferenceGround({ sondagem_x: -15 }, 0, terrain)).toBeCloseTo(1.875)
+    // avaliado sempre em x=-15, não no x de avaliação corrente (100)
+    expect(layerReferenceGround({ sondagem_x: -15 }, 100, terrain)).toBeCloseTo(1.875)
+  })
+
+  test('sem nenhum dos dois, usa o terreno natural no x de avaliação corrente (acompanha a topografia)', () => {
+    expect(layerReferenceGround({}, -20, terrain)).toBeCloseTo(0)
+    expect(layerReferenceGround({}, 20, terrain)).toBeCloseTo(15)
+  })
+
+  test('sem terreno customizado, cai pra 0', () => {
+    expect(layerReferenceGround({}, 5, undefined)).toBe(0)
+  })
+})
 
 describe('buildProfile — ordem das bancadas por modo', () => {
   // total_height=18,011 e bench_height=8 → resto de 2,011 + duas bancadas cheias de 8

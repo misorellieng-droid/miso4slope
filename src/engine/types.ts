@@ -21,9 +21,13 @@ export interface Layer {
   depth_top?: number   // profundidade do topo abaixo do terreno natural local (m) — se definido, tem prioridade sobre y_top
   depth_base?: number  // profundidade da base abaixo do terreno natural local (m) — se definido, tem prioridade sobre y_base
   sondagem_x?: number  // posição x (m, mesmo referencial do perfil, pé=0) do furo de sondagem que originou esta
-                        // camada — quando definido, depth_top/depth_base são medidos a partir do terreno NESSE
-                        // x fixo (não no x de avaliação corrente), então a camada aparece como uma faixa reta na
-                        // elevação real medida no furo, em vez de ondular acompanhando o terreno em todo o perfil
+                        // camada — informação geral do furo (a mesma para todas as camadas que vieram dele),
+                        // não um dado por camada; usada como referência de posição e, na ausência de
+                        // sondagem_collar, como x fixo pra avaliar o terreno natural (ver layerReferenceGround)
+  sondagem_collar?: number // cota absoluta da boca do furo (m) — medida real e pontual do furo, que não precisa
+                        // bater com o terreno natural informado (uma generalização/aproximação do perfil); quando
+                        // definida, tem prioridade sobre o terreno natural pra medir depth_top/depth_base, e a
+                        // camada vira uma faixa reta nessa cota, independente do formato do terreno em outro ponto
 }
 
 export interface FillMaterial {
