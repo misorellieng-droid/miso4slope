@@ -1,11 +1,21 @@
 import { supabase } from './supabase'
 import type { Layer, SoilClass } from '../engine/types'
 
+export interface Cliente {
+  id: string
+  nome: string
+  documento: string | null
+  email: string | null
+  telefone: string | null
+}
+
 export interface ProjetoSummary {
   id: string
   nome: string
   descricao: string | null
   created_at: string
+  cliente_id: string | null
+  cliente_nome: string | null
   analisesCount: number
   sondagensCount: number
 }
@@ -67,7 +77,7 @@ export async function listProjetos(): Promise<ProjetoSummary[]> {
 
   const { data, error } = await supabase
     .from('projetos')
-    .select('id, nome, descricao, created_at, analises(count), sondagens(count)')
+    .select('id, nome, descricao, created_at, cliente_id, clientes(nome), analises(count), sondagens(count)')
     .order('created_at', { ascending: false })
   if (error) throw error
 
@@ -77,17 +87,45 @@ export async function listProjetos(): Promise<ProjetoSummary[]> {
     nome: p.nome,
     descricao: p.descricao,
     created_at: p.created_at,
+    cliente_id: p.cliente_id ?? null,
+    cliente_nome: p.clientes?.nome ?? null,
     analisesCount: p.analises?.[0]?.count ?? 0,
     sondagensCount: p.sondagens?.[0]?.count ?? 0,
   }))
 }
 
-export async function createProjeto(nome: string, descricao?: string): Promise<string> {
+export async function listClientes(): Promise<Cliente[]> {
+  if (!supabase) return []
+  const { data, error } = await supabase
+    .from('clientes')
+    .select('id, nome, documento, email, telefone')
+    .order('nome', { ascending: true })
+  if (error) throw error
+  return data ?? []
+}
+
+export async function createCliente(input: { nome: string; documento?: string | null; email?: string | null; telefone?: string | null }): Promise<Cliente> {
+  if (!supabase) throw new Error('Supabase não configurado.')
+  const { data, error } = await supabase
+    .from('clientes')
+    .insert({
+      nome: input.nome,
+      documento: input.documento || null,
+      email: input.email || null,
+      telefone: input.telefone || null,
+    })
+    .select('id, nome, documento, email, telefone')
+    .single()
+  if (error) throw error
+  return data
+}
+
+export async function createProjeto(nome: string, descricao?: string, clienteId?: string | null): Promise<string> {
   if (!supabase) throw new Error('Supabase não configurado.')
 
   const { data, error } = await supabase
     .from('projetos')
-    .insert({ nome, descricao: descricao || null })
+    .insert({ nome, descricao: descricao || null, cliente_id: clienteId || null })
     .select('id')
     .single()
   if (error) throw error
@@ -100,7 +138,7 @@ export async function deleteProjeto(id: string): Promise<void> {
   if (error) throw error
 }
 
-export async function updateProjeto(id: string, patch: { nome?: string; descricao?: string | null }): Promise<void> {
+export async function updateProjeto(id: string, patch: { nome?: string; descricao?: string | null; cliente_id?: string | null }): Promise<void> {
   if (!supabase) throw new Error('Supabase não configurado.')
   const { error } = await supabase.from('projetos').update(patch).eq('id', id)
   if (error) throw error
