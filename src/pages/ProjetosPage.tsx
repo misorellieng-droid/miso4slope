@@ -1,12 +1,33 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { FileText, FolderOpen, Layers, Loader2, Pencil, Plus, Trash2, X } from 'lucide-react'
+import {
+  Building2,
+  ChevronDown,
+  FileText,
+  FolderOpen,
+  FolderPlus,
+  Layers,
+  Loader2,
+  Mail,
+  Pencil,
+  Phone,
+  Plus,
+  Share2,
+  Trash2,
+  UserPlus,
+} from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import {
   createProjeto, deleteProjeto, listProjetos, updateProjeto, type ProjetoSummary,
   listClientes, createCliente, type Cliente,
 } from '../lib/projetosStorage'
 import { dispatchCadastro } from '../lib/cadastroSync'
+import { Modal } from '../components/ui/Modal'
+import { Field, fieldInputClass } from '../components/ui/Field'
+
+const PRIMARY_BTN =
+  'flex items-center gap-2 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-brand-dark disabled:opacity-60'
+const GHOST_BTN = 'rounded-lg px-4 py-2 text-sm font-medium text-text-secondary transition hover:bg-elevated'
 
 const REPLICATE_TARGETS = [
   { slug: 'miso4eng', label: 'Miso4Eng' },
@@ -259,166 +280,170 @@ export function ProjetosPage() {
       )}
 
       {/* Modal: Novo/Editar projeto */}
-      {formOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-md rounded-lg bg-surface p-6 shadow-lg">
-            <div className="mb-4 flex items-center justify-between">
-              <h2 className="font-sans text-lg font-bold text-text-primary">
-                {formOpen === 'create' ? 'Novo projeto' : 'Editar projeto'}
-              </h2>
-              <button onClick={closeForm} className="rounded p-1 hover:bg-elevated">
-                <X size={18} className="text-text-secondary" />
-              </button>
-            </div>
+      <Modal
+        open={formOpen != null}
+        onClose={closeForm}
+        title={formOpen === 'create' ? 'Novo projeto' : 'Editar projeto'}
+        description={
+          formOpen === 'create'
+            ? 'Cadastre o projeto e, se já tiver, vincule o cliente responsável.'
+            : 'Atualize os dados do projeto.'
+        }
+        icon={<FolderPlus size={20} />}
+        footer={
+          <>
+            <button onClick={closeForm} className={GHOST_BTN}>
+              Cancelar
+            </button>
+            <button onClick={handleSaveForm} disabled={formSaving} className={PRIMARY_BTN}>
+              {formSaving && <Loader2 size={14} className="animate-spin" />}
+              {formOpen === 'create' ? 'Criar projeto' : 'Salvar alterações'}
+            </button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <Field label="Nome do projeto" required>
+            <input
+              autoFocus
+              className={fieldInputClass}
+              placeholder="Ex: Talude BR-101 km 42"
+              value={formNome}
+              onChange={(e) => setFormNome(e.target.value)}
+            />
+          </Field>
 
-            <div className="space-y-3">
-              <div>
-                <label className="mb-1 block text-xs font-medium text-text-secondary">Nome do projeto *</label>
-                <input
-                  className="w-full rounded-md border border-border bg-elevated px-3 py-2 text-sm text-text-primary"
-                  placeholder="Ex: Talude BR-101 km 42"
-                  value={formNome}
-                  onChange={(e) => setFormNome(e.target.value)}
+          <Field label="Cliente" hint="Vincule um cliente já cadastrado ou crie um novo sem sair daqui.">
+            <div className="flex items-stretch gap-2">
+              <div className="relative flex-1">
+                <select
+                  className={`${fieldInputClass} appearance-none pr-8`}
+                  value={formClienteId}
+                  onChange={(e) => setFormClienteId(e.target.value)}
+                >
+                  <option value="">Nenhum cliente vinculado</option>
+                  {clientes.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.nome}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown
+                  size={15}
+                  className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-text-secondary"
                 />
               </div>
-
-              <div>
-                <label className="mb-1 block text-xs font-medium text-text-secondary">Cliente</label>
-                <div className="flex gap-1">
-                  <select
-                    className="flex-1 rounded-md border border-border bg-elevated px-3 py-2 text-sm text-text-primary"
-                    value={formClienteId}
-                    onChange={(e) => setFormClienteId(e.target.value)}
-                  >
-                    <option value="">Selecione...</option>
-                    {clientes.map((c) => (
-                      <option key={c.id} value={c.id}>{c.nome}</option>
-                    ))}
-                  </select>
-                  <button
-                    type="button"
-                    onClick={openNovoCliente}
-                    className="rounded-md border border-border px-2 hover:bg-elevated"
-                    title="Novo cliente"
-                  >
-                    <Plus size={16} className="text-text-secondary" />
-                  </button>
-                </div>
-              </div>
-
-              <div>
-                <label className="mb-1 block text-xs font-medium text-text-secondary">Descrição</label>
-                <textarea
-                  className="w-full rounded-md border border-border bg-elevated px-3 py-2 text-sm text-text-primary"
-                  rows={2}
-                  value={formDescricao}
-                  onChange={(e) => setFormDescricao(e.target.value)}
-                />
-              </div>
-            </div>
-
-            <div className="mt-5 flex justify-end gap-2">
-              <button onClick={closeForm} className="rounded-md px-3 py-2 text-sm text-text-secondary hover:bg-elevated">
-                Cancelar
-              </button>
               <button
-                onClick={handleSaveForm}
-                disabled={formSaving}
-                className="flex items-center gap-2 rounded-md bg-brand px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
+                type="button"
+                onClick={openNovoCliente}
+                className="flex shrink-0 items-center gap-1.5 rounded-lg border border-dashed border-border px-3 text-xs font-medium text-text-secondary transition hover:border-brand hover:text-brand"
+                title="Cadastrar novo cliente"
               >
-                {formSaving && <Loader2 size={14} className="animate-spin" />}
-                {formOpen === 'create' ? 'Criar projeto' : 'Salvar'}
+                <UserPlus size={14} /> Novo
               </button>
             </div>
-          </div>
+          </Field>
+
+          <Field label="Descrição" hint="Opcional — local, tipo de talude, referência interna, etc.">
+            <textarea
+              className={`${fieldInputClass} resize-none`}
+              rows={3}
+              value={formDescricao}
+              onChange={(e) => setFormDescricao(e.target.value)}
+            />
+          </Field>
         </div>
-      )}
+      </Modal>
 
       {/* Modal: Novo cliente */}
-      {clienteFormOpen && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-md rounded-lg bg-surface p-6 shadow-lg">
-            <div className="mb-4 flex items-center justify-between">
-              <h2 className="font-sans text-lg font-bold text-text-primary">Novo cliente</h2>
-              <button onClick={() => setClienteFormOpen(false)} className="rounded p-1 hover:bg-elevated">
-                <X size={18} className="text-text-secondary" />
-              </button>
-            </div>
+      <Modal
+        open={clienteFormOpen}
+        onClose={() => setClienteFormOpen(false)}
+        title="Novo cliente"
+        description="Cadastre o cliente para vincular a este e a outros projetos."
+        icon={<UserPlus size={20} />}
+        footer={
+          <>
+            <button onClick={() => setClienteFormOpen(false)} className={GHOST_BTN}>
+              Cancelar
+            </button>
+            <button onClick={handleSaveCliente} disabled={clienteSaving} className={PRIMARY_BTN}>
+              {clienteSaving && <Loader2 size={14} className="animate-spin" />}
+              Criar cliente
+            </button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <Field label="Nome" required>
+            <input autoFocus className={fieldInputClass} value={clienteNome} onChange={(e) => setClienteNome(e.target.value)} />
+          </Field>
 
-            <div className="space-y-3">
-              <div>
-                <label className="mb-1 block text-xs font-medium text-text-secondary">Nome *</label>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="CPF / CNPJ">
+              <div className="relative">
+                <Building2 size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary" />
                 <input
-                  className="w-full rounded-md border border-border bg-elevated px-3 py-2 text-sm text-text-primary"
-                  value={clienteNome}
-                  onChange={(e) => setClienteNome(e.target.value)}
+                  className={`${fieldInputClass} pl-8`}
+                  value={clienteDocumento}
+                  onChange={(e) => setClienteDocumento(e.target.value)}
                 />
               </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-text-secondary">CPF / CNPJ</label>
-                  <input
-                    className="w-full rounded-md border border-border bg-elevated px-3 py-2 text-sm text-text-primary"
-                    value={clienteDocumento}
-                    onChange={(e) => setClienteDocumento(e.target.value)}
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-text-secondary">Telefone</label>
-                  <input
-                    className="w-full rounded-md border border-border bg-elevated px-3 py-2 text-sm text-text-primary"
-                    value={clienteTelefone}
-                    onChange={(e) => setClienteTelefone(e.target.value)}
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="mb-1 block text-xs font-medium text-text-secondary">E-mail</label>
+            </Field>
+            <Field label="Telefone">
+              <div className="relative">
+                <Phone size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary" />
                 <input
-                  type="email"
-                  className="w-full rounded-md border border-border bg-elevated px-3 py-2 text-sm text-text-primary"
-                  value={clienteEmail}
-                  onChange={(e) => setClienteEmail(e.target.value)}
+                  className={`${fieldInputClass} pl-8`}
+                  value={clienteTelefone}
+                  onChange={(e) => setClienteTelefone(e.target.value)}
                 />
               </div>
+            </Field>
+          </div>
 
-              <div className="rounded-md border border-border p-3">
-                <div className="mb-2 text-xs font-medium text-text-secondary">Replicar para</div>
-                <div className="flex flex-wrap gap-3">
-                  {REPLICATE_TARGETS.map((t) => (
-                    <label key={t.slug} className="flex items-center gap-1.5 text-sm text-text-secondary">
-                      <input
-                        type="checkbox"
-                        checked={clienteReplicate.includes(t.slug)}
-                        onChange={(e) =>
-                          setClienteReplicate((prev) =>
-                            e.target.checked ? [...prev, t.slug] : prev.filter((s) => s !== t.slug),
-                          )
-                        }
-                      />
-                      {t.label}
-                    </label>
-                  ))}
-                </div>
-              </div>
+          <Field label="E-mail">
+            <div className="relative">
+              <Mail size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary" />
+              <input
+                type="email"
+                className={`${fieldInputClass} pl-8`}
+                value={clienteEmail}
+                onChange={(e) => setClienteEmail(e.target.value)}
+              />
             </div>
+          </Field>
 
-            <div className="mt-5 flex justify-end gap-2">
-              <button onClick={() => setClienteFormOpen(false)} className="rounded-md px-3 py-2 text-sm text-text-secondary hover:bg-elevated">
-                Cancelar
-              </button>
-              <button
-                onClick={handleSaveCliente}
-                disabled={clienteSaving}
-                className="flex items-center gap-2 rounded-md bg-brand px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
-              >
-                {clienteSaving && <Loader2 size={14} className="animate-spin" />}
-                Criar cliente
-              </button>
+          <div className="rounded-lg border border-border bg-elevated/40 p-3.5">
+            <div className="mb-2.5 flex items-center gap-1.5 text-xs font-medium text-text-secondary">
+              <Share2 size={13} /> Replicar cadastro para
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {REPLICATE_TARGETS.map((t) => {
+                const active = clienteReplicate.includes(t.slug)
+                return (
+                  <button
+                    type="button"
+                    key={t.slug}
+                    onClick={() =>
+                      setClienteReplicate((prev) =>
+                        active ? prev.filter((s) => s !== t.slug) : [...prev, t.slug]
+                      )
+                    }
+                    className={`rounded-full border px-3 py-1 text-xs font-medium transition ${
+                      active
+                        ? 'border-brand bg-brand/10 text-brand'
+                        : 'border-border text-text-secondary hover:border-brand/50 hover:text-text-primary'
+                    }`}
+                  >
+                    {t.label}
+                  </button>
+                )
+              })}
             </div>
           </div>
         </div>
-      )}
+      </Modal>
     </div>
   )
 }

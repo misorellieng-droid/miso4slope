@@ -47,6 +47,8 @@ export interface ProjetoDetail {
   id: string
   nome: string
   descricao: string | null
+  cliente_id: string | null
+  cliente_nome: string | null
   analises: ProjetoAnalise[]
   sondagens: ProjetoSondagem[]
 }
@@ -149,7 +151,7 @@ export async function getProjetoDetail(id: string): Promise<ProjetoDetail> {
 
   const { data: projeto, error: projetoError } = await supabase
     .from('projetos')
-    .select('id, nome, descricao')
+    .select('id, nome, descricao, cliente_id, clientes(nome)')
     .eq('id', id)
     .single()
   if (projetoError) throw projetoError
@@ -172,6 +174,9 @@ export async function getProjetoDetail(id: string): Promise<ProjetoDetail> {
     id: projeto.id,
     nome: projeto.nome,
     descricao: projeto.descricao,
+    cliente_id: projeto.cliente_id ?? null,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    cliente_nome: (projeto as any).clientes?.nome ?? null,
     analises: (analises ?? []).map((a) => ({
       id: a.id,
       nome_secao: a.nome_secao,

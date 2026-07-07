@@ -1,22 +1,54 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, ChevronDown, ChevronUp, Download, FileDown, Loader2, Pencil, Trash2, Upload } from 'lucide-react'
+import {
+  ArrowLeft,
+  Building2,
+  ChevronDown,
+  ChevronUp,
+  Download,
+  FileDown,
+  Loader2,
+  Mail,
+  Pencil,
+  Phone,
+  Share2,
+  Trash2,
+  UserPlus,
+  Upload,
+  Users,
+} from 'lucide-react'
 import { deleteAnalysis, renameAnalysis } from '../lib/analysisStorage'
 import {
+  createCliente,
   deleteProjeto,
   getProjetoDetail,
   getSondagemCamadas,
+  listClientes,
   sondagemFileUrl,
   updateProjeto,
   type CamadaRow,
+  type Cliente,
   type ProjetoDetail,
 } from '../lib/projetosStorage'
 import { deleteSondagem, renameSondagem } from '../lib/sondagemStorage'
+import { dispatchCadastro } from '../lib/cadastroSync'
+import { Modal } from '../components/ui/Modal'
+import { Field, fieldInputClass } from '../components/ui/Field'
 
 const METHOD_LABELS: Record<string, string> = {
   bishop: 'Bishop Simplificado',
   fellenius: 'Fellenius',
 }
+
+const REPLICATE_TARGETS = [
+  { slug: 'miso4eng', label: 'Miso4Eng' },
+  { slug: 'miso4manager', label: 'Miso4Manager' },
+  { slug: 'miso4proj', label: 'Miso4Proj' },
+]
+
+const PRIMARY_BTN =
+  'flex items-center gap-2 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-brand-dark disabled:opacity-60'
+const GHOST_BTN = 'rounded-lg px-4 py-2 text-sm font-medium text-text-secondary transition hover:bg-elevated'
 
 function fmt(n: number | null, digits = 2): string {
   return n == null || !Number.isFinite(n) ? '—' : n.toFixed(digits)
@@ -32,6 +64,23 @@ export function ProjetoDetailPage() {
   const [busyRowId, setBusyRowId] = useState<string | null>(null)
   const [expandedSondagem, setExpandedSondagem] = useState<string | null>(null)
   const [camadas, setCamadas] = useState<Record<string, CamadaRow[]>>({})
+  const [clientes, setClientes] = useState<Cliente[]>([])
+
+  // ── Modal: Editar projeto ─────────────────────────────────────────────────
+  const [editOpen, setEditOpen] = useState(false)
+  const [formNome, setFormNome] = useState('')
+  const [formDescricao, setFormDescricao] = useState('')
+  const [formClienteId, setFormClienteId] = useState('')
+  const [formSaving, setFormSaving] = useState(false)
+
+  // ── Modal: Novo cliente (chamado a partir do modal de projeto) ────────────
+  const [clienteFormOpen, setClienteFormOpen] = useState(false)
+  const [clienteNome, setClienteNome] = useState('')
+  const [clienteDocumento, setClienteDocumento] = useState('')
+  const [clienteEmail, setClienteEmail] = useState('')
+  const [clienteTelefone, setClienteTelefone] = useState('')
+  const [clienteReplicate, setClienteReplicate] = useState<string[]>([])
+  const [clienteSaving, setClienteSaving] = useState(false)
 
   const reload = () => {
     if (!id) return Promise.resolve()
@@ -39,6 +88,12 @@ export function ProjetoDetailPage() {
       .then(setProjeto)
       .catch((err) => setError(err instanceof Error ? err.message : 'Erro ao carregar projeto.'))
   }
+
+  useEffect(() => {
+    listClientes()
+      .then(setClientes)
+      .catch(() => {})
+  }, [])
 
   useEffect(() => {
     if (!id) return
@@ -83,16 +138,85 @@ export function ProjetoDetailPage() {
     }
   }
 
-  const handleRenameProjeto = async () => {
-    if (!id || !projeto) return
-    const nome = window.prompt('Nome do projeto:', projeto.nome)
-    if (!nome || nome === projeto.nome) return
-    const descricao = window.prompt('Descrição (opcional):', projeto.descricao ?? '') ?? projeto.descricao
+  const openEdit = () => {
+    if (!projeto) return
+    setFormNome(projeto.nome)
+    setFormDescricao(projeto.descricao ?? '')
+    setFormClienteId(projeto.cliente_id ?? '')
+    setEditOpen(true)
+  }
+
+  const handleSaveEdit = async () => {
+    if (!id || !formNome.trim()) {
+      setError('Informe o nome do projeto.')
+      return
+    }
+    setFormSaving(true)
+    setError(null)
     try {
-      await updateProjeto(id, { nome, descricao })
+      await updateProjeto(id, {
+        nome: formNome.trim(),
+        descricao: formDescricao.trim() || null,
+        cliente_id: formClienteId || null,
+      })
+      setEditOpen(false)
       await reload()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erro ao renomear projeto.')
+      setError(err instanceof Error ? err.message : 'Erro ao salvar projeto.')
+    } finally {
+      setFormSaving(false)
+    }
+  }
+
+  const openNovoCliente = () => {
+    setClienteNome('')
+    setClienteDocumento('')
+    setClienteEmail('')
+    setClienteTelefone('')
+    setClienteReplicate([])
+    setClienteFormOpen(true)
+  }
+
+  const handleSaveCliente = async () => {
+    if (!clienteNome.trim()) {
+      setError('Informe o nome do cliente.')
+      return
+    }
+    setClienteSaving(true)
+    setError(null)
+    try {
+      const created = await createCliente({
+        nome: clienteNome.trim(),
+        documento: clienteDocumento.trim() || null,
+        email: clienteEmail.trim() || null,
+        telefone: clienteTelefone.trim() || null,
+      })
+      setClientes((prev) => [...prev, created].sort((a, b) => a.nome.localeCompare(b.nome)))
+      setFormClienteId(created.id)
+
+      if (clienteReplicate.length > 0) {
+        const result = await dispatchCadastro({
+          sourceRecordId: created.id,
+          tipo: 'cliente',
+          payload: {
+            tipo: 'PJ',
+            nome: created.nome,
+            documento: created.documento,
+            email: created.email,
+            telefone: created.telefone,
+          },
+          targetAppSlugs: clienteReplicate,
+        })
+        if (result.error) {
+          setError(`Falha ao replicar cliente: ${result.error}`)
+        }
+      }
+
+      setClienteFormOpen(false)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erro ao criar cliente.')
+    } finally {
+      setClienteSaving(false)
     }
   }
 
@@ -173,11 +297,16 @@ export function ProjetoDetailPage() {
       <div className="mb-6 flex items-center justify-between">
         <div>
           <h1 className="font-sans text-xl font-bold text-text-primary">{projeto.nome}</h1>
+          {projeto.cliente_nome && (
+            <p className="flex items-center gap-1 text-sm text-text-secondary">
+              <Users size={13} /> {projeto.cliente_nome}
+            </p>
+          )}
           {projeto.descricao && <p className="text-sm text-text-secondary">{projeto.descricao}</p>}
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={handleRenameProjeto}
+            onClick={openEdit}
             className="flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm text-text-secondary hover:text-text-primary"
           >
             <Pencil size={14} /> Editar
@@ -366,6 +495,168 @@ export function ProjetoDetailPage() {
       <p className="mt-6 flex items-center gap-1 text-xs text-text-secondary">
         <FileDown size={12} /> Precisa de um relatório? Abra uma análise e use "Exportar PDF".
       </p>
+
+      {/* Modal: Editar projeto */}
+      <Modal
+        open={editOpen}
+        onClose={() => setEditOpen(false)}
+        title="Editar projeto"
+        description="Atualize os dados do projeto."
+        icon={<Pencil size={20} />}
+        footer={
+          <>
+            <button onClick={() => setEditOpen(false)} className={GHOST_BTN}>
+              Cancelar
+            </button>
+            <button onClick={handleSaveEdit} disabled={formSaving} className={PRIMARY_BTN}>
+              {formSaving && <Loader2 size={14} className="animate-spin" />}
+              Salvar alterações
+            </button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <Field label="Nome do projeto" required>
+            <input
+              autoFocus
+              className={fieldInputClass}
+              placeholder="Ex: Talude BR-101 km 42"
+              value={formNome}
+              onChange={(e) => setFormNome(e.target.value)}
+            />
+          </Field>
+
+          <Field label="Cliente" hint="Vincule um cliente já cadastrado ou crie um novo sem sair daqui.">
+            <div className="flex items-stretch gap-2">
+              <div className="relative flex-1">
+                <select
+                  className={`${fieldInputClass} appearance-none pr-8`}
+                  value={formClienteId}
+                  onChange={(e) => setFormClienteId(e.target.value)}
+                >
+                  <option value="">Nenhum cliente vinculado</option>
+                  {clientes.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.nome}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown
+                  size={15}
+                  className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-text-secondary"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={openNovoCliente}
+                className="flex shrink-0 items-center gap-1.5 rounded-lg border border-dashed border-border px-3 text-xs font-medium text-text-secondary transition hover:border-brand hover:text-brand"
+                title="Cadastrar novo cliente"
+              >
+                <UserPlus size={14} /> Novo
+              </button>
+            </div>
+          </Field>
+
+          <Field label="Descrição" hint="Opcional — local, tipo de talude, referência interna, etc.">
+            <textarea
+              className={`${fieldInputClass} resize-none`}
+              rows={3}
+              value={formDescricao}
+              onChange={(e) => setFormDescricao(e.target.value)}
+            />
+          </Field>
+        </div>
+      </Modal>
+
+      {/* Modal: Novo cliente */}
+      <Modal
+        open={clienteFormOpen}
+        onClose={() => setClienteFormOpen(false)}
+        title="Novo cliente"
+        description="Cadastre o cliente para vincular a este e a outros projetos."
+        icon={<UserPlus size={20} />}
+        footer={
+          <>
+            <button onClick={() => setClienteFormOpen(false)} className={GHOST_BTN}>
+              Cancelar
+            </button>
+            <button onClick={handleSaveCliente} disabled={clienteSaving} className={PRIMARY_BTN}>
+              {clienteSaving && <Loader2 size={14} className="animate-spin" />}
+              Criar cliente
+            </button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <Field label="Nome" required>
+            <input autoFocus className={fieldInputClass} value={clienteNome} onChange={(e) => setClienteNome(e.target.value)} />
+          </Field>
+
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="CPF / CNPJ">
+              <div className="relative">
+                <Building2 size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary" />
+                <input
+                  className={`${fieldInputClass} pl-8`}
+                  value={clienteDocumento}
+                  onChange={(e) => setClienteDocumento(e.target.value)}
+                />
+              </div>
+            </Field>
+            <Field label="Telefone">
+              <div className="relative">
+                <Phone size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary" />
+                <input
+                  className={`${fieldInputClass} pl-8`}
+                  value={clienteTelefone}
+                  onChange={(e) => setClienteTelefone(e.target.value)}
+                />
+              </div>
+            </Field>
+          </div>
+
+          <Field label="E-mail">
+            <div className="relative">
+              <Mail size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary" />
+              <input
+                type="email"
+                className={`${fieldInputClass} pl-8`}
+                value={clienteEmail}
+                onChange={(e) => setClienteEmail(e.target.value)}
+              />
+            </div>
+          </Field>
+
+          <div className="rounded-lg border border-border bg-elevated/40 p-3.5">
+            <div className="mb-2.5 flex items-center gap-1.5 text-xs font-medium text-text-secondary">
+              <Share2 size={13} /> Replicar cadastro para
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {REPLICATE_TARGETS.map((t) => {
+                const active = clienteReplicate.includes(t.slug)
+                return (
+                  <button
+                    type="button"
+                    key={t.slug}
+                    onClick={() =>
+                      setClienteReplicate((prev) =>
+                        active ? prev.filter((s) => s !== t.slug) : [...prev, t.slug]
+                      )
+                    }
+                    className={`rounded-full border px-3 py-1 text-xs font-medium transition ${
+                      active
+                        ? 'border-brand bg-brand/10 text-brand'
+                        : 'border-border text-text-secondary hover:border-brand/50 hover:text-text-primary'
+                    }`}
+                  >
+                    {t.label}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        </div>
+      </Modal>
     </div>
   )
 }

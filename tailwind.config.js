@@ -21,6 +21,17 @@ export default {
         sans: ['Inter', 'system-ui', 'sans-serif'],
         mono: ['"JetBrains Mono"', 'ui-monospace', 'monospace'],
       },
+      keyframes: {
+        'overlay-in': { from: { opacity: '0' }, to: { opacity: '1' } },
+        'modal-in': {
+          from: { opacity: '0', transform: 'translateY(6px) scale(0.98)' },
+          to: { opacity: '1', transform: 'translateY(0) scale(1)' },
+        },
+      },
+      animation: {
+        'overlay-in': 'overlay-in 0.15s ease-out',
+        'modal-in': 'modal-in 0.18s cubic-bezier(0.16, 1, 0.3, 1)',
+      },
     },
   },
   plugins: [],
