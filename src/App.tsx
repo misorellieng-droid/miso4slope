@@ -6,11 +6,14 @@ import { PlaceholderPage } from './pages/PlaceholderPage'
 import { ProjetosPage } from './pages/ProjetosPage'
 import { ProjetoDetailPage } from './pages/ProjetoDetailPage'
 import { SondagensPage } from './pages/SondagensPage'
+import { SSOPage } from './pages/SSOPage'
+import { RequireHubLogin } from './components/RequireHubLogin'
 
 export default function App() {
   return (
     <Routes>
-      <Route element={<AppLayout />}>
+      <Route path="sso" element={<SSOPage />} />
+      <Route element={<RequireHubLogin><AppLayout /></RequireHubLogin>}>
         <Route index element={<DashboardPage />} />
         <Route path="projetos" element={<ProjetosPage />} />
         <Route path="projetos/:id" element={<ProjetoDetailPage />} />
