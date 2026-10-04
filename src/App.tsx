@@ -7,6 +7,7 @@ import { ProjetosPage } from './pages/ProjetosPage'
 import { ProjetoDetailPage } from './pages/ProjetoDetailPage'
 import { SondagensPage } from './pages/SondagensPage'
 import { SSOPage } from './pages/SSOPage'
+import { NotificacoesPage } from './pages/NotificacoesPage'
 import { RequireHubLogin } from './components/RequireHubLogin'
 
 export default function App() {
@@ -19,6 +20,7 @@ export default function App() {
         <Route path="projetos/:id" element={<ProjetoDetailPage />} />
         <Route path="analise" element={<AnalysisPage />} />
         <Route path="sondagens" element={<SondagensPage />} />
+        <Route path="notificacoes" element={<NotificacoesPage />} />
         <Route path="manual" element={<PlaceholderPage title="Manual / Ajuda" />} />
       </Route>
     </Routes>

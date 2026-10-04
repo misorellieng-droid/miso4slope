@@ -1,6 +1,7 @@
 import {
   ArrowLeft,
   BarChart2,
+  Bell,
   BookOpen,
   Calculator,
   ChevronLeft,
@@ -28,6 +29,7 @@ const NAV_ITEMS = [
   { to: '/projetos', label: 'Projetos', icon: FolderOpen },
   { to: '/analise', label: 'Nova Análise', icon: Calculator },
   { to: '/sondagens', label: 'Sondagens', icon: Layers },
+  { to: '/notificacoes', label: 'Notificações', icon: Bell },
   { to: '/manual', label: 'Manual / Ajuda', icon: BookOpen },
 ]
 
