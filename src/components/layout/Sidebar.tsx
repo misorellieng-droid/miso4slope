@@ -1,4 +1,5 @@
 import {
+  ArrowLeft,
   BarChart2,
   BookOpen,
   Calculator,
@@ -12,6 +13,15 @@ import {
 import { NavLink } from 'react-router-dom'
 import { useState } from 'react'
 import { SlopeLogo } from '../icons/SlopeLogo'
+import { supabase } from '../../lib/supabase'
+import { HUB_URL } from '../../lib/hub'
+
+// Sair encerra a sessão só neste aparelho (a mesma do hub, pois o slope mora
+// no endereço do MISO4Apps) e volta para a página inicial do hub.
+async function sair() {
+  await supabase?.auth.signOut({ scope: 'local' })
+  window.location.href = HUB_URL
+}
 
 const NAV_ITEMS = [
   { to: '/', label: 'Dashboard', icon: BarChart2, end: true },
@@ -28,6 +38,15 @@ export function Sidebar() {
     <aside
       className={`flex shrink-0 flex-col bg-brand transition-all ${collapsed ? 'w-16' : 'w-60'}`}
     >
+      <a
+        href={`${HUB_URL}/dashboard`}
+        className={`flex items-center gap-2 border-b border-white/15 px-4 py-2.5 text-xs font-medium text-white/75 hover:bg-white/10 hover:text-white ${collapsed ? 'justify-center px-2' : ''}`}
+        title={collapsed ? 'Voltar ao MISO4Apps' : undefined}
+      >
+        <ArrowLeft size={16} className="shrink-0" />
+        {!collapsed && <span>MISO4Apps</span>}
+      </a>
+
       <div className={`flex items-center gap-2 px-4 py-5 ${collapsed ? 'justify-center px-2' : ''}`}>
         <SlopeLogo size={26} light />
         {!collapsed && (
@@ -66,6 +85,7 @@ export function Sidebar() {
           {!collapsed && <span>Configurações</span>}
         </button>
         <button
+          onClick={sair}
           className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-white/85 hover:bg-white/10 hover:text-white"
           title={collapsed ? 'Sair' : undefined}
         >
