@@ -9,6 +9,7 @@ import type {
   Layer,
   MaterialSegment,
   SlopeGeometry,
+  Point,
 } from './types'
 
 const SWEEP_POINTS = 2000
@@ -133,16 +134,43 @@ export function buildRawSlices(
   n_slices = 40
 ): BuiltSlices | null {
   const mode: AnalysisMode = fill == null ? 'corte' : 'aterro'
-  const profile = buildProfile(geo, mode)
+  return buildRawSlicesOnProfile(circle, {
+    profile: buildProfile(geo, mode),
+    refTerrain: effectiveNaturalTerrain(geo, mode),
+    waterY: -geo.water_table_depth,
+    gammaWater: geo.gamma_water ?? 9.81,
+    layers,
+    fill,
+    coverage,
+    resolvedFillZones: fillZones?.length ? resolveFillZones(fillZones, geo.total_height) : undefined,
+    n_slices,
+  })
+}
+
+// Tudo o que a montagem das fatias precisa, já resolvido: o perfil da
+// superfície (poligonal com x não-decrescente), o terreno de referência das
+// camadas e a cota do N.A. no mesmo referencial. O talude paramétrico monta
+// isso a partir de SlopeGeometry (buildRawSlices); a verificação de muros
+// monta a partir das poligonais do Civil 3D (engine/muros).
+export interface SliceSetup {
+  profile: Point[]
+  refTerrain: Point[] | undefined
+  waterY: number
+  gammaWater: number
+  layers: Layer[]
+  fill: FillMaterial | null
+  coverage?: FaceCoverage
+  resolvedFillZones?: Layer[]
+  n_slices: number
+}
+
+export function buildRawSlicesOnProfile(circle: CircleParams, setup: SliceSetup): BuiltSlices | null {
+  const { profile, refTerrain, waterY, gammaWater, layers, fill, coverage, resolvedFillZones, n_slices } = setup
   const range = findValidRange(circle, profile)
   if (!range) return null
 
   const { x_left, x_right } = range
   const b = (x_right - x_left) / n_slices
-  const gammaWater = geo.gamma_water ?? 9.81
-  const waterY = -geo.water_table_depth
-  const resolvedFillZones = fillZones?.length ? resolveFillZones(fillZones, geo.total_height) : undefined
-  const refTerrain = effectiveNaturalTerrain(geo, mode)
 
   const raw: RawSlice[] = []
   for (let i = 1; i <= n_slices; i++) {
