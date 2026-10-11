@@ -25,6 +25,7 @@ export interface AvaliacaoSecao {
   secao: SecaoEntrada
   modelo: ModeloSecao
   solo: SoloSecao
+  waterY: number // N.A. no referencial do motor (−∞ sem N.A.), para o desenho
   global: ResultadoGlobal | null
   gravidade?: ResultadoGravidade
   grampeado?: ResultadoGrampeado
@@ -99,7 +100,7 @@ export function avaliarSecao(
     avisos.push(...gravidade.avisos.map((a) => `s=${secao.s}: ${a}`))
   }
   const razao = Math.min(...razoes)
-  return { secao, modelo, solo: ss, global, gravidade, grampeado, fs, razao, ok: razao >= 1 - 1e-9, avisos }
+  return { secao, modelo, solo: ss, waterY: ss.waterY, global, gravidade, grampeado, fs, razao, ok: razao >= 1 - 1e-9, avisos }
 }
 
 /** Seção com outra inclinação e/ou outros fatores de pré-dimensionamento. */

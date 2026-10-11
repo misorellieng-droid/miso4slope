@@ -78,7 +78,7 @@ const fmt = (n: number | undefined, digits = 2) => (n == null || !Number.isFinit
  * finas, texto) que infla bastante um PNG sem ganho visual real — em
  * qualidade alta o JPEG fica visualmente idêntico com uma fração do peso.
  */
-async function svgToJpegDataUrl(
+export async function svgToJpegDataUrl(
   svg: SVGSVGElement,
   targetWidthPx = 1400
 ): Promise<{ dataUrl: string; width: number; height: number }> {
