@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { empuxoNoPlano, kaCoulomb, kaRankine, kpRankine } from '../empuxo'
+import { empuxoCunha, empuxoNoPlano, kaCoulomb, kaRankine, kpRankine } from '../empuxo'
 import { modelarSecao } from '../entrada'
 import { soloParaSecao, type SoloMuro } from '../solo'
 import { PARAMETROS_PADRAO, type MuroEntrada, type SecaoEntrada, type XZ } from '../tipos'
@@ -59,6 +59,24 @@ describe('coeficientes de empuxo (valores de tabela)', () => {
   })
   test('Kp = 3 para φ = 30°', () => {
     expect(kpRankine(30)).toBeCloseTo(3, 10)
+  })
+  test('cunha de tentativa, terrapleno horizontal: reproduz Coulomb fechado (δ = 0 e δ = 20°)', () => {
+    const plano = () => 3
+    expect(empuxoCunha(3, 0, plano, 18, 30, 0).Keq).toBeCloseTo(1 / 3, 3)
+    expect(empuxoCunha(3, 0, plano, 18, 30, 20).Keq).toBeCloseTo(0.2973, 3)
+    expect(empuxoCunha(3, 0, plano, 18, 30, 0).rho).toBeCloseTo(60, 0) // 45 + φ/2
+  })
+  test('cunha de tentativa, talude 1:1,5 de altura finita acima do muro: entre o plano e o talude infinito', () => {
+    // muro de 4 m; acima dele talude 1:1,5 (33,7°) com 3 m de altura e platô
+    const sup = (d: number) => 4 + Math.min(d / 1.5, 3)
+    const k = empuxoCunha(4, 0, sup, 18, 30, 20).Keq
+    expect(k).toBeGreaterThan(0.2973)
+    expect(Number.isFinite(k)).toBe(true) // Rankine com β = 33,7° > φ seria indefinido
+    expect(kaRankine(30, 33.7)).toBeNaN()
+  })
+  test('cunha de tentativa: coesão no plano reduz o empuxo', () => {
+    const plano = () => 3
+    expect(empuxoCunha(3, 0, plano, 18, 30, 20, 5).Pa).toBeLessThan(empuxoCunha(3, 0, plano, 18, 30, 20, 0).Pa)
   })
   test('empuxo no plano: γ constante e sem água dá ½·K·γ·H² a H/3', () => {
     const r = empuxoNoPlano(3, 1 / 3, () => 18)
@@ -134,8 +152,8 @@ describe('muro de flexão de 3 m em areia (φ 30°, c 0) — Rankine conferido �
   })
   test('Coulomb (δ = 2/3·φ) no mesmo muro: Ka = 0,2973, empuxo inclinado de 20°', () => {
     const c = rodar('concreto', secao, { ...PARAMETROS_PADRAO, metodo_empuxo: 'coulomb' })
-    expect(c.K).toBeCloseTo(0.2973, 4)
-    expect(c.Ea).toBeCloseTo(0.5 * 0.2973 * 18 * 9, 1)
+    expect(c.K).toBeCloseTo(0.2973, 3)
+    expect(c.Ea).toBeCloseTo(0.5 * 0.2973 * 18 * 9, 0)
     expect(c.inclinacaoEmpuxo).toBeCloseTo(20, 9)
     expect(c.fs_tombamento).toBeGreaterThan(r.fs_tombamento)
   })

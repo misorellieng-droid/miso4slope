@@ -1,5 +1,5 @@
 import type { Point } from '../types'
-import { empuxoNoPlano, kaCoulomb, kaRankine, kpRankine } from './empuxo'
+import { empuxoCunha, empuxoNoPlano, kaRankine, kpRankine } from './empuxo'
 import { linhaProjetoArquivo, paraMotor, type ModeloSecao } from './entrada'
 import { areaCentroide, topoPoligono, zEmX } from './geometria2d'
 import type { SoloSecao } from './solo'
@@ -130,22 +130,25 @@ export function verificarGravidade(
   const Hv = zs(xV) - zBase
   let sPhi = 0
   let sGama = 0
+  let sC = 0
   const nAm = 20
   for (let i = 0; i < nAm; i++) {
     const z = zBase + (Hv * (i + 0.5)) / nAm
     const m = material(xRet, z)
     sPhi += m.phi
     sGama += m.gamma
+    sC += m.c
   }
   const phi = sPhi / nAm
   const gama = sGama / nAm
+  const coesao = sC / nAm
 
   // terrapleno: inclinação média sobre a cunha ativa (extensão Hv/tg(45+φ/2))
   const L = Math.max(Hv / Math.tan(((45 + phi / 2) * Math.PI) / 180), 0.5)
   let beta = (Math.atan((zs(xDeU(B + L)) - zs(xV)) / L) * 180) / Math.PI
-  if (beta >= phi - 0.5) {
+  if (p.metodo_empuxo === 'rankine' && beta >= phi - 0.5) {
     avisos.push(
-      `Terrapleno acima do muro (${beta.toFixed(1)}°) igual ou mais íngreme que φ' do maciço (${phi.toFixed(1)}°): empuxo calculado com β = φ' − 0,5° — suavize o talude junto ao muro.`
+      `Terrapleno acima do muro (${beta.toFixed(1)}°) igual ou mais íngreme que φ' do maciço (${phi.toFixed(1)}°): Rankine calculado com β = φ' − 0,5° (muito conservador) — suavize o talude junto ao muro ou use Coulomb (cunha sobre a superfície real).`
     )
     beta = phi - 0.5
   }
@@ -154,8 +157,10 @@ export function verificarGravidade(
   let K: number
   let inc: number
   if (p.metodo_empuxo === 'coulomb') {
+    // cunha de tentativa sobre a superfície real (β só informativo)
     const delta = p.delta_coulomb_fator * phi
-    K = kaCoulomb(phi, beta, delta, 0)
+    const cunha = empuxoCunha(Hv, zBase, (dd) => zs(xDeU(B + dd)), gama, phi, delta, p.coesao_no_empuxo ? coesao : 0)
+    K = cunha.Keq
     inc = delta
   } else {
     K = kaRankine(phi, beta)

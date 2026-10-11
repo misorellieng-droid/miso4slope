@@ -1,4 +1,4 @@
-import { kaCoulomb, kaRankine } from './empuxo'
+import { empuxoCunha, kaRankine } from './empuxo'
 import type { ModeloSecao } from './entrada'
 import { zEmX } from './geometria2d'
 import type { ResultadoGlobal } from './global'
@@ -58,30 +58,36 @@ export function verificarGrampeado(
   // maciço retido logo atrás da face, ao longo da altura do muro (motor: retido à direita)
   let sPhi = 0
   let sGama = 0
+  let sC = 0
   const n = 20
   for (let i = 0; i < n; i++) {
     const y = pe.y + (H * (i + 0.5)) / n
     const m = solo.materialEm(pe.x + 0.5, y)
     sPhi += m.phi
     sGama += m.gamma
+    sC += m.c
   }
   const phi = sPhi / n
   const gama = sGama / n
+  const coesao = sC / n
 
   // terrapleno acima do topo: inclinação média sobre a cunha ativa
   const topo = { x: pe.x, y: pe.y + H }
   const L = Math.max(H / Math.tan(((45 + phi / 2) * Math.PI) / 180), 0.5)
   const yTopo = zEmX(topo.x + 0.01, modelo.linhaProjeto)
   let beta = (Math.atan((zEmX(topo.x + L, modelo.linhaProjeto) - yTopo) / L) * 180) / Math.PI
-  if (beta >= phi - 0.5) {
+  if (p.metodo_empuxo === 'rankine' && beta >= phi - 0.5) {
     avisos.push(
-      `Talude acima do grampeado (${beta.toFixed(1)}°) igual ou mais íngreme que φ' (${phi.toFixed(1)}°): T_max calculado com β = φ' − 0,5°.`
+      `Talude acima do grampeado (${beta.toFixed(1)}°) igual ou mais íngreme que φ' (${phi.toFixed(1)}°): Rankine com β = φ' − 0,5° (muito conservador) — use Coulomb (cunha sobre a superfície real) ou suavize o talude.`
     )
     beta = phi - 0.5
   }
   beta = Math.max(beta, 0)
+  // Coulomb: cunha de tentativa a partir do pé da face, sobre a superfície real
   const Ka =
-    p.metodo_empuxo === 'coulomb' ? kaCoulomb(phi, beta, p.delta_coulomb_fator * phi, 0) : kaRankine(phi, beta)
+    p.metodo_empuxo === 'coulomb'
+      ? empuxoCunha(H, pe.y, (dd) => zEmX(pe.x + dd, modelo.linhaProjeto), gama, phi, p.delta_coulomb_fator * phi, p.coesao_no_empuxo ? coesao : 0).Keq
+      : kaRankine(phi, beta)
   const Tmax = p.lambda_grampo * Ka * (gama * H + p.sobrecarga) * sh * sv
 
   if (!critico) avisos.push('Sem círculo crítico global: comprimento ancorado não calculado.')

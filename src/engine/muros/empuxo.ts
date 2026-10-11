@@ -89,3 +89,69 @@ export function empuxoNoPlano(
   const Uw = 0.5 * gamaW * hw * hw
   return { E, zE: E > 0 ? ME / E : 0, Uw, zU: hw / 3, hw }
 }
+
+export interface CunhaTentativa {
+  Pa: number   // empuxo máximo (kN/m), inclinado de δ
+  rho: number  // inclinação do plano de ruptura crítico (graus)
+  Keq: number  // coeficiente equivalente: Pa = ½·Keq·γ·Hv²
+}
+
+/**
+ * Coulomb generalizado por cunha de tentativa (Culmann) sobre a superfície
+ * real do terrapleno — berma, talude de altura finita, platô —, em vez de um
+ * β único. Plano virtual vertical de altura Hv; o plano de ruptura parte da
+ * base dele com inclinação ρ e vai até a superfície. Para cada ρ:
+ *
+ *   Pa(ρ) = [W·sen(ρ − φ) − C·cos φ] / cos(ρ − φ − δ)
+ *
+ * (W = peso da cunha, C = c'·comprimento do plano, só se a coesão for
+ * considerada). O empuxo de projeto é o máximo em ρ. Com terrapleno
+ * horizontal e C = 0, reproduz a fórmula fechada de Coulomb.
+ *
+ * zSup(d) = cota da superfície a uma distância d (m) do plano virtual, para
+ * dentro do maciço; zBase = cota da base do plano.
+ */
+export function empuxoCunha(
+  Hv: number,
+  zBase: number,
+  zSup: (d: number) => number,
+  gama: number,
+  phiGraus: number,
+  deltaGraus: number,
+  coesao = 0
+): CunhaTentativa {
+  if (!(Hv > 0)) return { Pa: 0, rho: 45, Keq: 0 }
+  const phi = (phiGraus * Math.PI) / 180
+  const delta = (deltaGraus * Math.PI) / 180
+  const passo = Math.max(0.02, Hv / 300) // m, integração da área da cunha
+  let melhor = { Pa: 0, rho: 45 + phiGraus / 2 }
+  for (let rg = phiGraus + 0.5; rg < 89.9; rg += 0.5) {
+    const rho = (rg * Math.PI) / 180
+    const tg = Math.tan(rho)
+    // área entre a superfície e o plano, até o plano encontrar a superfície
+    let area = 0
+    let d = 0
+    let dS = NaN
+    for (let i = 0; i < 20000; i++) {
+      const d1 = d + passo
+      const h0 = zSup(d) - (zBase + d * tg)
+      const h1 = zSup(d1) - (zBase + d1 * tg)
+      if (h1 <= 0) {
+        const t = h0 / (h0 - h1)
+        area += (h0 / 2) * passo * t
+        dS = d + passo * t
+        break
+      }
+      area += ((h0 + h1) / 2) * passo
+      d = d1
+    }
+    if (!Number.isFinite(dS)) continue
+    const W = gama * area
+    const C = coesao * (dS / Math.cos(rho))
+    const den = Math.cos(rho - phi - delta)
+    if (den <= 1e-6) continue
+    const Pa = (W * Math.sin(rho - phi) - C * Math.cos(phi)) / den
+    if (Pa > melhor.Pa) melhor = { Pa, rho: rg }
+  }
+  return { Pa: melhor.Pa, rho: melhor.rho, Keq: (2 * melhor.Pa) / (gama * Hv * Hv) }
+}

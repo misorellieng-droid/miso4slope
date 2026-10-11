@@ -124,6 +124,7 @@ export interface ParametrosMuros {
   gama_gabiao: number          // kN/m³ (pedra + vazios)
   metodo_empuxo: MetodoEmpuxo
   delta_coulomb_fator: number  // δ = fator × φ' no plano virtual (só Coulomb)
+  coesao_no_empuxo: boolean    // Coulomb (cunha): considerar c' no plano de ruptura
   sobrecarga: number           // kPa, no terreno do lado retido
   atrito_base_fator: number    // δ_base = fator × φ' do solo de fundação
   adesao_base_fator: number    // c_a = fator × c' do solo de fundação
@@ -147,6 +148,7 @@ export const PARAMETROS_PADRAO: ParametrosMuros = {
   gama_gabiao: 17,
   metodo_empuxo: 'rankine',
   delta_coulomb_fator: 2 / 3,
+  coesao_no_empuxo: false,
   sobrecarga: 0,
   atrito_base_fator: 2 / 3,
   adesao_base_fator: 0,
