@@ -278,6 +278,32 @@ export const SlopeCanvas = forwardRef<SlopeCanvasHandle, SlopeCanvasProps>(funct
     return pts
   }, [result])
 
+  // demais mecanismos da busca (rank ≥ 2), desenhados mais discretos
+  const otherArcs: Point[][] = useMemo(() => {
+    if (!result?.worst_circles) return []
+    return result.worst_circles
+      .filter((w) => w.rank > 1)
+      .map((w) => {
+        const pts: Point[] = []
+        const n = 60
+        for (let i = 0; i <= n; i++) {
+          const x = w.x_left + ((w.x_right - w.x_left) * i) / n
+          const inside = w.circle.R ** 2 - (x - w.circle.xc) ** 2
+          if (inside >= 0) pts.push({ x, y: w.circle.yc - Math.sqrt(inside) })
+        }
+        return pts
+      })
+  }, [result])
+
+  // área carregada: da crista até crista + extensão (ou 10 m, se toda a plataforma)
+  const surcharge = useMemo(() => {
+    const q = geometry.surcharge_q ?? 0
+    if (q <= 0) return null
+    const crest = profile[crestIndex]
+    const w = geometry.surcharge_width
+    return { q, x0: crest.x, x1: crest.x + (w != null && w > 0 ? w : 10), y: crest.y }
+  }, [geometry.surcharge_q, geometry.surcharge_width, profile, crestIndex])
+
   const aterroPolygon = useMemo(() => {
     const rise = profile.slice(toeIndex, crestIndex + 1)
     return [...rise, { x: rise[rise.length - 1].x, y: 0 }]
@@ -429,6 +455,32 @@ export const SlopeCanvas = forwardRef<SlopeCanvasHandle, SlopeCanvasProps>(funct
             strokeWidth={0.2}
             strokeDasharray="1.2 0.8"
           />
+
+          {/* sobrecarga na plataforma */}
+          {surcharge && (
+            <g stroke="var(--color-accent-amber)" strokeWidth={0.2}>
+              <line x1={surcharge.x0} y1={surcharge.y + 1.6} x2={surcharge.x1} y2={surcharge.y + 1.6} />
+              {Array.from({ length: Math.max(2, Math.min(12, Math.round((surcharge.x1 - surcharge.x0) / 1.5))) }).map(
+                (_, i, arr) => {
+                  const x = surcharge.x0 + ((surcharge.x1 - surcharge.x0) * i) / (arr.length - 1)
+                  return <line key={i} x1={x} y1={surcharge.y + 1.6} x2={x} y2={surcharge.y + 0.1} />
+                }
+              )}
+            </g>
+          )}
+
+          {/* outros mecanismos (piores círculos distintos) */}
+          {otherArcs.map((pts, i) => (
+            <polyline
+              key={i}
+              points={toPath(pts)}
+              fill="none"
+              stroke="var(--color-accent-red)"
+              strokeWidth={0.12}
+              strokeDasharray="0.6 0.9"
+              opacity={0.55}
+            />
+          ))}
 
           {/* círculo crítico */}
           {result && (

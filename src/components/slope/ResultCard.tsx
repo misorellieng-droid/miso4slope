@@ -79,6 +79,74 @@ export function ResultCard({ result, source = 'search', partialFS }: ResultCardP
         <div>R&nbsp;&nbsp;= {fmt(result.circle.R)} m</div>
       </div>
 
+      <div className="mt-4 space-y-1 border-t border-border pt-3 text-xs text-text-secondary">
+        <div>
+          Condição:{' '}
+          <span className="font-medium text-text-primary">
+            {result.condition === 'undrained'
+              ? 'Não drenada (fim de construção, c = su, φ = 0)'
+              : "Drenada (longo prazo, c', φ' e poropressão)"}
+          </span>
+        </div>
+        {(result.surcharge_q ?? 0) > 0 && (
+          <div>
+            Sobrecarga na plataforma:{' '}
+            <span className="font-medium text-text-primary">{fmt(result.surcharge_q ?? 0, 1)} kPa</span>
+            {result.surcharge_x_end != null && result.surcharge_x_start != null
+              ? ` (${fmt(result.surcharge_x_end - result.surcharge_x_start, 1)} m a partir da crista)`
+              : ' (toda a plataforma)'}
+          </div>
+        )}
+      </div>
+
+      {result.crosses_base && (
+        <div className="mt-3 rounded-md border border-accent-red p-2 text-xs text-accent-red">
+          Atenção: este círculo desce abaixo da base do perfil definido
+          {result.base_y != null ? ` (cota ${fmt(result.base_y)} m)` : ''}. O material abaixo dela não está definido
+          (o cálculo assume o da última camada). Estenda a última camada ou use outro círculo.
+        </div>
+      )}
+
+      {result.search_warnings?.map((w, i) => (
+        <div key={i} className="mt-3 rounded-md border border-border p-2 text-xs text-accent-amber">
+          {w}
+        </div>
+      ))}
+
+      {result.worst_circles && result.worst_circles.length > 1 && (
+        <div className="mt-4 border-t border-border pt-3">
+          <div className="mb-1 font-sans text-xs font-medium uppercase tracking-wide text-text-secondary">
+            Piores círculos distintos (outros mecanismos)
+          </div>
+          <table className="w-full font-mono text-xs">
+            <thead className="text-text-secondary">
+              <tr>
+                <th className="text-left">#</th>
+                <th className="text-right">FS</th>
+                <th className="text-right">xc</th>
+                <th className="text-right">yc</th>
+                <th className="text-right">R</th>
+                <th className="text-right">entrada–saída</th>
+              </tr>
+            </thead>
+            <tbody>
+              {result.worst_circles.map((w) => (
+                <tr key={w.rank}>
+                  <td>{w.rank}</td>
+                  <td className="text-right">{fmt(w.FS, 3)}</td>
+                  <td className="text-right">{fmt(w.circle.xc)}</td>
+                  <td className="text-right">{fmt(w.circle.yc)}</td>
+                  <td className="text-right">{fmt(w.circle.R)}</td>
+                  <td className="text-right">
+                    {fmt(w.x_left, 1)} a {fmt(w.x_right, 1)} m
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
       <div className="mt-4 border-t border-border pt-3 text-xs text-text-secondary">
         Fatias analisadas: {result.slices.length}
         <br />

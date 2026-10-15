@@ -1,5 +1,5 @@
 import { buildProfile, effectiveNaturalTerrain, groundY } from './geometry'
-import { avgSoil, resolveFillZones, splitHeightByGround } from './soil'
+import { avgSoil, profileBaseAt, resolveFillZones, splitHeightByGround } from './soil'
 import type {
   AnalysisMode,
   CircleParams,
@@ -106,6 +106,7 @@ export interface RawSlice {
   W: number
   W_aterro: number
   W_fundacao: number
+  W_sobrecarga: number // q × largura da fatia sob a área carregada (0 fora dela)
   alpha_rad: number
   u: number
 }
@@ -115,6 +116,30 @@ export interface BuiltSlices {
   x_right: number
   b: number
   raw: RawSlice[]
+  crosses_base: boolean
+  y_min: number
+  base_y: number | null
+}
+
+// Área carregada na plataforma: q (kPa) entre x_start e x_end (m).
+export interface SurchargeSpec {
+  q: number
+  x_start: number
+  x_end: number
+}
+
+/**
+ * Extensão x da área carregada da plataforma: da crista (último vértice antes
+ * do trecho plano final) até crista + surcharge_width; sem largura informada,
+ * vale para toda a plataforma (x_end = ∞).
+ */
+export function surchargeRange(
+  geo: SlopeGeometry,
+  profile: Point[] = buildProfile(geo)
+): { x_start: number; x_end: number } {
+  const xCrest = profile[profile.length - 2].x
+  const w = geo.surcharge_width
+  return { x_start: xCrest, x_end: w != null && w > 0 ? xCrest + w : Infinity }
 }
 
 /**
@@ -134,8 +159,16 @@ export function buildRawSlices(
   n_slices = 40
 ): BuiltSlices | null {
   const mode: AnalysisMode = fill == null ? 'corte' : 'aterro'
+  const profile = buildProfile(geo, mode)
+  const undrained = geo.analysis_condition === 'undrained'
+  const q = geo.surcharge_q ?? 0
+  const range = surchargeRange(geo, profile)
+  const surcharge: SurchargeSpec | undefined = q > 0 ? { q, ...range } : undefined
   return buildRawSlicesOnProfile(circle, {
-    profile: buildProfile(geo, mode),
+    profile,
+    surcharge,
+    undrained,
+    ru: !undrained && (geo.ru ?? 0) > 0 ? geo.ru : undefined,
     refTerrain: effectiveNaturalTerrain(geo, mode),
     waterY: -geo.water_table_depth,
     gammaWater: geo.gamma_water ?? 9.81,
@@ -162,10 +195,14 @@ export interface SliceSetup {
   coverage?: FaceCoverage
   resolvedFillZones?: Layer[]
   n_slices: number
+  surcharge?: SurchargeSpec
+  undrained?: boolean // sem poropressão (tensões totais, c = su e φ = 0)
+  ru?: number         // razão de poropressão: u = ru·γh, substitui o N.A.
 }
 
 export function buildRawSlicesOnProfile(circle: CircleParams, setup: SliceSetup): BuiltSlices | null {
   const { profile, refTerrain, waterY, gammaWater, layers, fill, coverage, resolvedFillZones, n_slices } = setup
+  const { surcharge, undrained, ru } = setup
   const range = findValidRange(circle, profile)
   if (!range) return null
 
@@ -173,6 +210,9 @@ export function buildRawSlicesOnProfile(circle: CircleParams, setup: SliceSetup)
   const b = (x_right - x_left) / n_slices
 
   const raw: RawSlice[] = []
+  let crosses_base = false
+  let y_min = Infinity
+  let base_y: number | null = null
   for (let i = 1; i <= n_slices; i++) {
     const xm = x_left + b * (i - 0.5)
     const y_top = groundY(xm, profile)
@@ -189,7 +229,25 @@ export function buildRawSlicesOnProfile(circle: CircleParams, setup: SliceSetup)
     const W_fundacao = soil.gammaH_fundacao * b
     const W = W_aterro + W_fundacao
     const alpha_rad = Math.asin((xm - circle.xc) / circle.R)
-    const u = y_base < waterY ? gammaWater * (waterY - y_base) : 0
+    // A sobrecarga só soma peso (W); não gera poropressão. Largura carregada
+    // da fatia = interseção de [xm ± b/2] com a área carregada.
+    const W_sobrecarga = surcharge
+      ? surcharge.q * Math.max(0, Math.min(xm + b / 2, surcharge.x_end) - Math.max(xm - b / 2, surcharge.x_start))
+      : 0
+    const u = undrained
+      ? 0
+      : ru != null
+        ? (ru * W) / b
+        : y_base < waterY
+          ? gammaWater * (waterY - y_base)
+          : 0
+
+    y_min = Math.min(y_min, y_base)
+    const sliceBase = profileBaseAt(xm, layers, refTerrain)
+    if (sliceBase !== null) {
+      base_y = base_y === null ? sliceBase : Math.min(base_y, sliceBase)
+      if (y_base < sliceBase - 1e-4) crosses_base = true
+    }
 
     raw.push({
       xm,
@@ -203,9 +261,10 @@ export function buildRawSlicesOnProfile(circle: CircleParams, setup: SliceSetup)
       phi_rad,
       phi_deg: soil.phi,
       gamma: soil.gamma,
-      W,
+      W: W + W_sobrecarga,
       W_aterro,
       W_fundacao,
+      W_sobrecarga,
       alpha_rad,
       u,
     })
@@ -213,5 +272,5 @@ export function buildRawSlicesOnProfile(circle: CircleParams, setup: SliceSetup)
 
   if (raw.length < MIN_VALID_SLICES) return null
 
-  return { x_left, x_right, b, raw }
+  return { x_left, x_right, b, raw, crosses_base, y_min, base_y }
 }

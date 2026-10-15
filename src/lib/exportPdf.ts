@@ -418,11 +418,59 @@ export async function exportReportToPdf(data: ReportData, fileName = 'miso4slope
       ['Profundidade do N.A.', `${fmt(geometry.water_table_depth)} m`],
       ['Peso específico da água', `${fmt(geometry.gamma_water ?? 9.81)} kN/m³`],
       ['Cota do pé (opcional)', geometry.toe_elevation != null ? `${fmt(geometry.toe_elevation)} m` : '—'],
+      [
+        'Condição de análise',
+        geometry.analysis_condition === 'undrained'
+          ? "Não drenada (fim de construção): c = su, phi = 0, sem poropressão"
+          : "Drenada (longo prazo): c', phi' e poropressão" +
+            ((geometry.ru ?? 0) > 0 ? ` (ru = ${fmt(geometry.ru ?? 0)})` : ' (N.A.)'),
+      ],
+      [
+        'Sobrecarga na plataforma',
+        (geometry.surcharge_q ?? 0) > 0
+          ? `${fmt(geometry.surcharge_q ?? 0)} kPa, ` +
+            (geometry.surcharge_width != null && geometry.surcharge_width > 0
+              ? `${fmt(geometry.surcharge_width)} m a partir da crista`
+              : 'toda a plataforma')
+          : 'Sem sobrecarga',
+      ],
       ['Número de fatias', String(result.slices.length)],
     ],
   })
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   y = (doc as any).lastAutoTable.finalY + 8
+
+  if (result.worst_circles && result.worst_circles.length > 0) {
+    doc.setFont('helvetica', 'bold')
+    doc.text('Circulo critico e piores circulos distintos', margin, y)
+    y += 2
+    autoTable(doc, {
+      startY: y,
+      margin: { left: margin, right: margin },
+      theme: 'grid',
+      styles: { fontSize: 8, cellPadding: 1.5 },
+      head: [['#', 'FS', 'xc (m)', 'yc (m)', 'R (m)', 'Entrada-saida (m)']],
+      body: result.worst_circles.map((w) => [
+        String(w.rank),
+        fmt(w.FS, 3),
+        fmt(w.circle.xc),
+        fmt(w.circle.yc),
+        fmt(w.circle.R),
+        `${fmt(w.x_left, 1)} a ${fmt(w.x_right, 1)}`,
+      ]),
+    })
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    y = (doc as any).lastAutoTable.finalY + 4
+    for (const w of result.search_warnings ?? []) {
+      doc.setFont('helvetica', 'normal')
+      doc.setFontSize(8)
+      const lines = doc.splitTextToSize(w.normalize('NFD').replace(/[\u0300-\u036f]/g, ''), 180)
+      doc.text(lines, margin, y)
+      y += lines.length * 4
+    }
+    y += 4
+    doc.setFontSize(10)
+  }
 
   if (mode === 'aterro') {
     doc.setFont('helvetica', 'bold')

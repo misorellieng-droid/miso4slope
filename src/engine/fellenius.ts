@@ -1,4 +1,4 @@
-import { buildRawSlices, MIN_VALID_SLICES } from './slices'
+import { buildRawSlices, MIN_VALID_SLICES, surchargeRange } from './slices'
 import type {
   AnalysisResult,
   CircleParams,
@@ -69,6 +69,7 @@ export function felleniusFS(
       W: s.W,
       W_aterro: s.W_aterro,
       W_fundacao: s.W_fundacao,
+      W_sobrecarga: s.W_sobrecarga,
       alpha_rad: s.alpha_rad,
       alpha_deg: (s.alpha_rad * 180) / Math.PI,
       u: s.u,
@@ -94,5 +95,12 @@ export function felleniusFS(
     is_adequate: FS >= FS_MIN_NBR,
     fs_min_nbr: FS_MIN_NBR,
     method: 'fellenius',
+    condition: geo.analysis_condition ?? 'drained',
+    surcharge_q: geo.surcharge_q ?? 0,
+    surcharge_x_start: surchargeRange(geo).x_start,
+    surcharge_x_end: surchargeRange(geo).x_end,
+    crosses_base: built.crosses_base,
+    y_min: built.y_min,
+    base_y: built.base_y,
   }
 }

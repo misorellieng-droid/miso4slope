@@ -80,11 +80,19 @@ export interface SlopeGeometry {
   water_table_depth: number  // profundidade do NA abaixo do pé (m)
   gamma_water?: number       // peso esp. da água (padrão: 9.81)
   toe_elevation?: number     // cota absoluta do pé do talude (m), datum para importar sondagens
+  surcharge_q?: number       // sobrecarga uniforme na plataforma (kPa); 0/indefinido = sem sobrecarga
+  surcharge_width?: number   // extensão carregada a partir da crista (m); indefinido = toda a plataforma
+  analysis_condition?: AnalysisCondition // padrão: 'drained' (comportamento original)
+  ru?: number                // razão de poropressão (u/γh), só na condição drenada; > 0 substitui o N.A.
   natural_terrain?: Point[]  // perfil real do terreno natural (x,y relativos ao pé=0,0), substitui o
                               // trecho plano padrão e serve de referência de profundidade para camadas
                               // com depth_top/depth_base (aterro/fundação separados por essa superfície,
                               // não mais por y=0)
 }
+
+// Drenada (longo prazo): c', φ' e poropressão (N.A. ou ru). Não drenada (fim de
+// construção): análise em tensões totais — c = su, φ = 0, sem poropressão.
+export type AnalysisCondition = 'drained' | 'undrained'
 
 export interface CircleParams {
   xc: number
@@ -118,6 +126,7 @@ export interface SliceResult {
   W: number
   W_aterro: number      // parcela do peso vinda do material de aterro
   W_fundacao: number    // parcela do peso vinda do material de fundação
+  W_sobrecarga?: number // parcela do peso vinda da sobrecarga na plataforma (q × largura carregada da fatia)
   alpha_rad: number
   alpha_deg: number
   u: number
@@ -149,6 +158,26 @@ export interface AnalysisResult {
   is_adequate: boolean         // FS >= fs_min_nbr (1.5)
   fs_min_nbr: number           // critério NBR 11682
   method: StabilityMethod
+  condition?: AnalysisCondition
+  surcharge_q?: number
+  surcharge_x_start?: number
+  surcharge_x_end?: number
+  // círculo desce abaixo da base da última camada definida: o material ali é
+  // desconhecido (o cálculo assume o da última camada) — nunca ignorar
+  crosses_base?: boolean
+  y_min?: number               // cota mais baixa do arco entre as fatias (m)
+  base_y?: number | null       // cota da base do perfil definido (m); null = indefinida
+  // preenchidos só pela busca automática
+  worst_circles?: WorstCircle[]
+  search_warnings?: string[]
+}
+
+export interface WorstCircle {
+  rank: number
+  circle: CircleParams
+  FS: number
+  x_left: number
+  x_right: number
 }
 
 // Camada extraída de um boletim de sondagem (SPT), em profundidade relativa

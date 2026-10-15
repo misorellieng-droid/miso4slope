@@ -74,6 +74,20 @@ function effectiveBounds(layer: Layer, x: number, terrain: Point[] | undefined):
 }
 
 /**
+ * Cota da base do perfil de camadas definido, em x: a menor base finita entre
+ * as camadas. null se nenhuma camada tem base definida (perfil sem limite
+ * inferior explícito).
+ */
+export function profileBaseAt(x: number, layers: Layer[], terrain: Point[] | undefined): number | null {
+  let base: number | null = null
+  for (const layer of layers) {
+    const b = effectiveBounds(layer, x, terrain).base
+    if (Number.isFinite(b) && (base === null || b < base)) base = b
+  }
+  return base
+}
+
+/**
  * Retorna os parâmetros do material num ponto (x,y).
  * Acima da superfície do terreno em x (aterro): percorre as zonas de
  * compactação diferenciada (fillZones, já resolvidas em y_top/y_base

@@ -1,4 +1,4 @@
-import { buildRawSlices, MIN_VALID_SLICES } from './slices'
+import { buildRawSlices, MIN_VALID_SLICES, surchargeRange } from './slices'
 import type {
   AnalysisResult,
   CircleParams,
@@ -50,7 +50,25 @@ export function iterateBishop(
   const sumWSinAlpha = raw.reduce((a, s) => a + s.W * Math.sin(s.alpha_rad), 0)
   if (sumWSinAlpha <= 0) return null
 
-  let FS = 1.3
+  // A iteração é uma busca de ponto fixo; o teste de mα < 0,2 com uma estimativa
+  // inicial ruim (FS muito abaixo do real) rejeitaria círculos válidos antes de
+  // convergir. Por isso tenta mais de uma estimativa inicial e só rejeita se
+  // nenhuma convergir para um FS com mα aceitável em todas as fatias.
+  for (const start of [1.3, 2.5, 5, 10]) {
+    const r = runFixedPoint(raw, b, extraResisting, sumWSinAlpha, start)
+    if (r) return r
+  }
+  return null
+}
+
+function runFixedPoint(
+  raw: BishopSliceInput[],
+  b: number,
+  extraResisting: number,
+  sumWSinAlpha: number,
+  start: number
+): { FS: number; converged: boolean; iterations: number } | null {
+  let FS = start
   let converged = false
   let iterations = 0
 
@@ -58,7 +76,7 @@ export function iterateBishop(
     let sumNumerator = extraResisting
     for (const s of raw) {
       const mAlpha = Math.cos(s.alpha_rad) + (Math.sin(s.alpha_rad) * Math.tan(s.phi_rad)) / FS
-      if (mAlpha < MIN_M_ALPHA) return null // círculo geometricamente implausível para este talude
+      if (mAlpha < MIN_M_ALPHA) return null
       sumNumerator += (s.c * b + (s.W - s.u * b) * Math.tan(s.phi_rad)) / mAlpha
     }
 
@@ -120,6 +138,7 @@ export function bishopFS(
       W: s.W,
       W_aterro: s.W_aterro,
       W_fundacao: s.W_fundacao,
+      W_sobrecarga: s.W_sobrecarga,
       alpha_rad: s.alpha_rad,
       alpha_deg: (s.alpha_rad * 180) / Math.PI,
       u: s.u,
@@ -142,5 +161,12 @@ export function bishopFS(
     is_adequate: FS >= FS_MIN_NBR,
     fs_min_nbr: FS_MIN_NBR,
     method: 'bishop',
+    condition: geo.analysis_condition ?? 'drained',
+    surcharge_q: geo.surcharge_q ?? 0,
+    surcharge_x_start: surchargeRange(geo).x_start,
+    surcharge_x_end: surchargeRange(geo).x_end,
+    crosses_base: built.crosses_base,
+    y_min: built.y_min,
+    base_y: built.base_y,
   }
 }

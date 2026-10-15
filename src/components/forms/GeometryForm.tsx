@@ -1,5 +1,5 @@
 import { Plus, Trash2 } from 'lucide-react'
-import type { AnalysisMode, Point, SlopeGeometry } from '../../engine/types'
+import type { AnalysisCondition, AnalysisMode, Point, SlopeGeometry } from '../../engine/types'
 import { NumberField } from './NumberField'
 
 interface GeometryFormProps {
@@ -83,6 +83,62 @@ export function GeometryForm({ value, onChange, mode }: GeometryFormProps) {
           suffix="m"
           onChange={(v) => onChange({ ...value, toe_elevation: Number.isFinite(v) ? v : undefined })}
         />
+      </div>
+
+      <div>
+        <div className="mb-2 text-xs font-medium uppercase tracking-wide text-text-secondary">
+          Condição de análise
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <label className="col-span-2 flex flex-col gap-1">
+            <span className="text-xs text-text-secondary">Condição</span>
+            <select
+              value={value.analysis_condition ?? 'drained'}
+              onChange={(e) => onChange({ ...value, analysis_condition: e.target.value as AnalysisCondition })}
+              className="rounded-md border border-border bg-elevated px-2 py-1.5 text-sm text-text-primary"
+            >
+              <option value="drained">Drenada (longo prazo): c', φ' e poropressão</option>
+              <option value="undrained">Não drenada (fim de construção): c = su, φ = 0, sem poropressão</option>
+            </select>
+          </label>
+          {(value.analysis_condition ?? 'drained') === 'drained' ? (
+            <NumberField
+              label="ru (opcional, substitui o N.A.)"
+              value={value.ru ?? NaN}
+              step={0.05}
+              min={0}
+              onChange={(v) => onChange({ ...value, ru: Number.isFinite(v) && v > 0 ? v : undefined })}
+            />
+          ) : (
+            <p className="col-span-2 text-xs text-text-secondary">
+              Informe a argila mole com c = su e φ = 0 na aba de solo; a poropressão é desconsiderada em todo o perfil.
+            </p>
+          )}
+        </div>
+      </div>
+
+      <div>
+        <div className="mb-2 text-xs font-medium uppercase tracking-wide text-text-secondary">
+          Sobrecarga na plataforma
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <NumberField
+            label="Sobrecarga na plataforma q (kPa)"
+            value={value.surcharge_q ?? 0}
+            step={1}
+            min={0}
+            suffix="kPa"
+            onChange={(v) => onChange({ ...value, surcharge_q: Number.isFinite(v) && v > 0 ? v : undefined })}
+          />
+          <NumberField
+            label="Extensão carregada a partir da crista (vazio = toda a plataforma)"
+            value={value.surcharge_width ?? NaN}
+            step={0.5}
+            min={0}
+            suffix="m"
+            onChange={(v) => onChange({ ...value, surcharge_width: Number.isFinite(v) && v > 0 ? v : undefined })}
+          />
+        </div>
       </div>
 
       <div>
