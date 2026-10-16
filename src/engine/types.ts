@@ -80,6 +80,8 @@ export interface SlopeGeometry {
   water_table_depth: number  // profundidade do NA abaixo do pé (m)
   gamma_water?: number       // peso esp. da água (padrão: 9.81)
   toe_elevation?: number     // cota absoluta do pé do talude (m), datum para importar sondagens
+  improvement?: ImprovementStrip[]     // faixas de solo melhorado (colunas CMC/brita), na fundação
+  reinforcement?: ReinforcementLayer[] // geossintéticos horizontais (colchão sobre colunas ou na base do aterro)
   surcharge_q?: number       // sobrecarga uniforme na plataforma (kPa); 0/indefinido = sem sobrecarga
   surcharge_width?: number   // extensão carregada a partir da crista (m); indefinido = toda a plataforma
   analysis_condition?: AnalysisCondition // padrão: 'drained' (comportamento original)
@@ -93,6 +95,35 @@ export interface SlopeGeometry {
 // Drenada (longo prazo): c', φ' e poropressão (N.A. ou ru). Não drenada (fim de
 // construção): análise em tensões totais — c = su, φ = 0, sem poropressão.
 export type AnalysisCondition = 'drained' | 'undrained'
+
+// Faixa de solo melhorado por colunas: dentro do retângulo (x, y) o solo é
+// tratado como material composto (solo + colunas), pela razão de área
+// m = A_coluna / A_malha. 'brita': coluna granular (atrito, com concentração
+// de tensão n); 'cmc': coluna rígida de concreto, com resistência ao
+// cisalhamento tau (kPa) mobilizável na superfície de ruptura.
+export interface ImprovementStrip {
+  x_start: number
+  x_end: number
+  y_top: number
+  y_base: number
+  kind: 'brita' | 'cmc'
+  area_ratio: number     // m, 0 a 1
+  gamma_col: number      // kN/m³
+  phi_col?: number       // graus (brita)
+  n_stress?: number      // razão de concentração de tensão coluna/solo (brita)
+  tau_col?: number       // kPa (cmc)
+}
+
+// Reforço horizontal em y = y; atua onde a superfície de ruptura o cruza no
+// lado da massa que escorrega (x_end), com ancoragem a partir daí até x_end.
+export interface ReinforcementLayer {
+  y: number
+  x_start: number
+  x_end: number
+  T: number              // resistência de projeto à tração (kN/m)
+  mu?: number            // coeficiente de interação solo-reforço (arrancamento), padrão 0,6
+  gamma_cover?: number   // γ do material sobre o reforço, padrão 18 kN/m³
+}
 
 export interface CircleParams {
   xc: number

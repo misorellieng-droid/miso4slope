@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { AlertTriangle, CheckCircle2, ChevronDown, Download, FileDown, FileUp, Loader2, Play, Square, XCircle } from 'lucide-react'
+import { ArgilaMolePanel } from '../components/muros/ArgilaMolePanel'
 import { MuroCanvas, type MuroCanvasHandle } from '../components/muros/MuroCanvas'
 import { NumberField } from '../components/forms/NumberField'
 import { lerMurosSecoes, secaoCritica } from '../engine/muros/entrada'
@@ -75,6 +76,7 @@ export function MurosPage({ soloAvulso }: { soloAvulso?: SoloMuro } = {}) {
   const [aterro, setAterro] = usePersistedState<FillMaterial>(P + 'aterroSondagem', { c: 10, phi: 28, gamma: 18 })
   const [params, setParams] = usePersistedState<ParametrosMuros>(P + 'params', PARAMETROS_PADRAO)
   const [verParams, setVerParams] = useState(false)
+  const [aba, setAba] = usePersistedState<'muros' | 'argila'>(P + 'aba', 'muros')
   const [responsavel, setResponsavel] = usePersistedState(P + 'responsavel', '')
 
   const [detalhes, setDetalhes] = useState<Record<string, DetalheSerial>>({})
@@ -271,8 +273,42 @@ export function MurosPage({ soloAvulso }: { soloAvulso?: SoloMuro } = {}) {
   const setP = <K extends keyof ParametrosMuros>(k: K, v: ParametrosMuros[K]) => setParams({ ...p, [k]: v })
   const usaSondagem = arquivo?.muros.some((m) => fonteDo(m.id).startsWith('s:'))
 
+  const seletorAba = (
+    <div className="mb-4 flex w-fit rounded-md border border-border p-0.5">
+      {(
+        [
+          ['muros', 'Verificação de muros'],
+          ['argila', 'Argila mole: faixa de colunas'],
+        ] as const
+      ).map(([id, rotuloAba]) => (
+        <button
+          key={id}
+          onClick={() => setAba(id)}
+          className={`rounded px-3 py-1.5 text-sm font-medium ${aba === id ? 'bg-brand text-white' : 'text-text-secondary hover:text-text-primary'}`}
+        >
+          {rotuloAba}
+        </button>
+      ))}
+    </div>
+  )
+
+  if (aba === 'argila') {
+    return (
+      <div className="mx-auto max-w-7xl">
+        {seletorAba}
+        <h1 className="mb-1 font-sans text-xl font-bold text-text-primary">Pré-dimensionamento sobre argila mole</h1>
+        <p className="mb-6 text-sm text-text-secondary">
+          Faixa de colunas (CMC ou brita) com colchão de geogrelha. Pré-dimensionamento preliminar; não é projeto
+          executivo.
+        </p>
+        <ArgilaMolePanel />
+      </div>
+    )
+  }
+
   return (
     <div className="mx-auto max-w-7xl">
+      {seletorAba}
       <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="font-sans text-xl font-bold text-text-primary">Verificação de Muros</h1>

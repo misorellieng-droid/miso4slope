@@ -1,3 +1,4 @@
+import { momentoReforcos } from './reforco'
 import { buildRawSlices, MIN_VALID_SLICES, surchargeRange } from './slices'
 import type {
   AnalysisResult,
@@ -112,7 +113,8 @@ export function bishopFS(
   const { x_left, x_right, b, raw } = built
   if (raw.length < MIN_VALID_SLICES) return null
 
-  const solved = iterateBishop(raw, b)
+  const reforco = momentoReforcos(circle, geo, fill == null ? 'corte' : 'aterro', x_left, x_right)
+  const solved = iterateBishop(raw, b, reforco.momentoSobreR)
   if (!solved) return null
   const { FS, converged, iterations } = solved
 

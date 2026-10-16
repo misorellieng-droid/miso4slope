@@ -2,6 +2,7 @@ import { buildProfile, effectiveNaturalTerrain, groundY } from './geometry'
 import { avgSoil, profileBaseAt, resolveFillZones, splitHeightByGround } from './soil'
 import type {
   AnalysisMode,
+  ImprovementStrip,
   CircleParams,
   FaceCoverage,
   FillMaterial,
@@ -167,6 +168,7 @@ export function buildRawSlices(
   return buildRawSlicesOnProfile(circle, {
     profile,
     surcharge,
+    improvement: geo.improvement,
     undrained,
     ru: !undrained && (geo.ru ?? 0) > 0 ? geo.ru : undefined,
     refTerrain: effectiveNaturalTerrain(geo, mode),
@@ -196,13 +198,14 @@ export interface SliceSetup {
   resolvedFillZones?: Layer[]
   n_slices: number
   surcharge?: SurchargeSpec
+  improvement?: ImprovementStrip[]
   undrained?: boolean // sem poropressão (tensões totais, c = su e φ = 0)
   ru?: number         // razão de poropressão: u = ru·γh, substitui o N.A.
 }
 
 export function buildRawSlicesOnProfile(circle: CircleParams, setup: SliceSetup): BuiltSlices | null {
   const { profile, refTerrain, waterY, gammaWater, layers, fill, coverage, resolvedFillZones, n_slices } = setup
-  const { surcharge, undrained, ru } = setup
+  const { surcharge, undrained, ru, improvement } = setup
   const range = findValidRange(circle, profile)
   if (!range) return null
 
@@ -224,9 +227,32 @@ export function buildRawSlicesOnProfile(circle: CircleParams, setup: SliceSetup)
 
     const soil = avgSoil(xm, y_top, y_base, layers, fill, coverage, resolvedFillZones, refTerrain)
     const { h_aterro, h_fundacao } = splitHeightByGround(xm, y_top, y_base, refTerrain, fill != null)
-    const phi_rad = (soil.phi * Math.PI) / 180
+    let soil_c = soil.c
+    let soil_phi = soil.phi
+    let extraW = 0
+    for (const z of improvement ?? []) {
+      if (xm < z.x_start || xm > z.x_end || y_base > z.y_top || y_base < z.y_base) continue
+      const m = Math.min(Math.max(z.area_ratio, 0), 1)
+      const tanS = Math.tan((soil_phi * Math.PI) / 180)
+      if (z.kind === 'brita') {
+        const n = Math.max(z.n_stress ?? 3, 1)
+        const muC = n / (1 + (n - 1) * m)
+        const muS = 1 / (1 + (n - 1) * m)
+        const tanC = Math.tan(((z.phi_col ?? 38) * Math.PI) / 180)
+        soil_c = (1 - m) * soil_c
+        soil_phi = (Math.atan(m * muC * tanC + (1 - m) * muS * tanS) * 180) / Math.PI
+      } else {
+        soil_c = (1 - m) * soil_c + m * (z.tau_col ?? 0)
+        soil_phi = (Math.atan((1 - m) * tanS) * 180) / Math.PI
+      }
+      // peso adicional da coluna (γ_col − γ_solo) no trecho da fatia dentro da faixa
+      const t = Math.max(0, Math.min(y_top, z.y_top) - Math.max(y_base, z.y_base))
+      extraW += m * (z.gamma_col - soil.gamma) * t * b
+      break
+    }
+    const phi_rad = (soil_phi * Math.PI) / 180
     const W_aterro = soil.gammaH_aterro * b
-    const W_fundacao = soil.gammaH_fundacao * b
+    const W_fundacao = soil.gammaH_fundacao * b + extraW
     const W = W_aterro + W_fundacao
     const alpha_rad = Math.asin((xm - circle.xc) / circle.R)
     // A sobrecarga só soma peso (W); não gera poropressão. Largura carregada
@@ -257,9 +283,9 @@ export function buildRawSlicesOnProfile(circle: CircleParams, setup: SliceSetup)
       h_aterro,
       h_fundacao,
       materialSegments: soil.segments,
-      c: soil.c,
+      c: soil_c,
       phi_rad,
-      phi_deg: soil.phi,
+      phi_deg: soil_phi,
       gamma: soil.gamma,
       W: W + W_sobrecarga,
       W_aterro,
