@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { filtrarProjetosVisiveis } from './projetosOcultos'
 import type { Layer, SoilClass } from '../engine/types'
 
 export interface Cliente {
@@ -11,6 +12,10 @@ export interface Cliente {
 
 export interface ProjetoSummary {
   id: string
+  /** false = excluído no cadastro do hub */
+  ativo?: boolean
+  /** status original do hub (planejada, em_andamento, pausada, concluida, cancelada) */
+  status_central?: string | null
   nome: string
   descricao: string | null
   created_at: string
@@ -74,18 +79,21 @@ export interface CamadaRow {
   ordem: number
 }
 
-export async function listProjetos(): Promise<ProjetoSummary[]> {
+/** Por padrão oculta cancelados e excluídos; `mostrarOcultos` traz todos. */
+export async function listProjetos(mostrarOcultos = false): Promise<ProjetoSummary[]> {
   if (!supabase) return []
 
   const { data, error } = await supabase
     .from('projetos')
-    .select('id, nome, descricao, created_at, cliente_id, clientes(nome), analises(count), sondagens(count)')
+    .select('id, nome, descricao, created_at, cliente_id, ativo, status_central, clientes(nome), analises(count), sondagens(count)')
     .order('created_at', { ascending: false })
   if (error) throw error
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return (data ?? []).map((p: any) => ({
+  const lista: ProjetoSummary[] = (data ?? []).map((p: any) => ({
     id: p.id,
+    ativo: p.ativo ?? true,
+    status_central: p.status_central ?? null,
     nome: p.nome,
     descricao: p.descricao,
     created_at: p.created_at,
@@ -94,6 +102,7 @@ export async function listProjetos(): Promise<ProjetoSummary[]> {
     analisesCount: p.analises?.[0]?.count ?? 0,
     sondagensCount: p.sondagens?.[0]?.count ?? 0,
   }))
+  return filtrarProjetosVisiveis(lista, mostrarOcultos)
 }
 
 export async function listClientes(): Promise<Cliente[]> {
