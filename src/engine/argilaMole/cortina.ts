@@ -8,7 +8,7 @@ import type { AnalysisResult, FaceCoverage, FillMaterial, Layer, SlopeGeometry, 
 //   1) empuxo do aterro e da sobrecarga contidos pela face (K·γ·H²/2 + K·q·H);
 //   2) força T (kN/m) que a cortina precisa entregar na superfície de ruptura
 //      para o talude global atingir o FS alvo (achada por bisseção no FS).
-// Cada estaca é uma viga apoiada no tirante (topo) e engastada na areia,
+// Cada estaca é uma viga apoiada no tirante (topo) e engastada na camada de apoio,
 // com a carga concentrada na cota onde a ruptura cruza a cortina.
 // Não é projeto executivo: o fluxo do solo mole entre as estacas, a
 // interação solo-estaca (p-y), o recalque e o dimensionamento estrutural
@@ -24,8 +24,7 @@ export interface ParamsCortina {
   diametroReacao: number // m
   comprimentoReacao: number // m, a partir do terreno
   empuxo: 'k0' | 'ka'
-  phiAreia: number // °
-  gammaAreia: number // kN/m³
+  camadaApoio: number // índice da camada onde a ficha embute (−1 = automática)
   fyk: number // MPa (aço do tirante e das barras)
   fsAlvo: number
 }
@@ -40,8 +39,7 @@ export const CORTINA_PADRAO: ParamsCortina = {
   diametroReacao: 0.8,
   comprimentoReacao: 19.8,
   empuxo: 'k0',
-  phiAreia: 35,
-  gammaAreia: 19,
+  camadaApoio: -1,
   fyk: 500,
   fsAlvo: 1.5,
 }
@@ -128,7 +126,8 @@ export interface Esforcos {
   // cargas por estaca
   cargas: { nome: string; valor: number; cota: number }[] // kN, cota (m)
   Ptotal: number
-  // viga apoiada no tirante e engastada na areia
+  apoio: ApoioFicha
+  // viga apoiada no tirante e engastada na camada de apoio
   comprimentoViga: number
   cotaEngaste: number
   Ftirante: number // kN por estaca (reação no tirante)
@@ -140,7 +139,7 @@ export interface Esforcos {
   // tirante
   AtirNec: number // cm²
   // ficha
-  Hu: number // kN (Broms, areia)
+  Hu: number // kN (Broms, camada de apoio)
   fsFicha: number
   // estaca de reação
   cotaPontaReacao: number
@@ -149,6 +148,52 @@ export interface Esforcos {
   fsReacao: number
   ancorada: boolean
   fichaNecessaria: number | null // m, para FS da ficha ≥ 2 (null = acima de 25 m)
+}
+
+export interface ApoioFicha {
+  indice: number
+  nome: string
+  cotaTopo: number // m, topo da camada onde a ficha começa a embutir
+  c: number
+  phi: number
+  gamma: number
+}
+
+/**
+ * Camada de apoio da ficha. Automática: a camada logo abaixo da camada mole
+ * (φ = 0) mais funda; sem camada mole, a primeira camada (ficha a partir do
+ * terreno). Também pode ser escolhida pelo índice, qualquer que seja o solo.
+ */
+export function resolverApoio(layers: Layer[], p: Pick<ParamsCortina, 'camadaApoio'>): ApoioFicha {
+  const topo = (l: Layer) => l.y_top ?? 0
+  let idx = p.camadaApoio
+  if (!(idx >= 0 && idx < layers.length)) {
+    const moles = layers.filter((l) => (l.phi ?? 0) === 0)
+    if (moles.length === 0) idx = 0
+    else {
+      const baseMole = Math.min(...moles.map((l) => l.y_base ?? 0))
+      let melhor = -1
+      let dist = Infinity
+      layers.forEach((l, i) => {
+        if ((l.phi ?? 0) === 0) return
+        const d = Math.abs(topo(l) - baseMole)
+        if (d < dist) {
+          dist = d
+          melhor = i
+        }
+      })
+      idx = melhor >= 0 ? melhor : layers.length - 1
+    }
+  }
+  const l = layers[Math.max(0, Math.min(idx, layers.length - 1))]
+  return {
+    indice: Math.max(0, Math.min(idx, layers.length - 1)),
+    nome: l?.name ?? 'Camada de apoio',
+    cotaTopo: l ? Math.min(topo(l), 0) : 0,
+    c: l?.c ?? 0,
+    phi: l?.phi ?? 0,
+    gamma: l?.gamma ?? 18,
+  }
 }
 
 const kp = (phi: number) => Math.tan(((45 + phi / 2) * Math.PI) / 180) ** 2
@@ -173,11 +218,12 @@ export function dimensionarCortina(
   yRupturaReacao: number | null,
   buscarFicha = true
 ): Esforcos {
-  const baseArgila = Math.min(...layers.filter((l) => (l.phi ?? 0) === 0).map((l) => l.y_base ?? 0), 0)
+  const apoio = resolverApoio(layers, p)
+  const baseArgila = apoio.cotaTopo // topo da camada de apoio (início da ficha)
   const K = p.empuxo === 'k0' ? 1 - Math.sin((fill.phi * Math.PI) / 180) : Math.tan(((45 - fill.phi / 2) * Math.PI) / 180) ** 2
   const s = p.espacamento
 
-  // engaste equivalente: 2 diâmetros abaixo do topo da areia, no máximo a ficha
+  // engaste equivalente: 2 diâmetros abaixo do topo do apoio, no máximo a ficha
   const zEng = Math.min(2 * p.diametro, p.ficha)
   const cotaEngaste = baseArgila - zEng
   const L = p.cotaTirante - cotaEngaste
@@ -220,19 +266,26 @@ export function dimensionarCortina(
   const area = (Math.PI * p.diametro ** 2) / 4
   const AtirNec = ((GAMMA_F * RA) / fyd) * 1e4
 
-  // ficha (Broms, areia, estaca curta): Hu = 0,5 γ' D L³ Kp / (e + L)
-  const gl = p.gammaAreia - GAMMA_W
-  const Kp = kp(p.phiAreia)
+  // ficha (Broms, estaca curta, carga a uma excentricidade e):
+  //   apoio granular (φ ≥ 5°): Hu = 0,5 γ' D L³ Kp / (e + L)   (coesão desprezada)
+  //   apoio coesivo  (φ < 5°): Hu = 9 c D (L − 1,5 D) / (1 + e/L)
+  const gl = apoio.gamma - GAMMA_W
+  const Kp = kp(apoio.phi)
+  const granular = apoio.phi >= 5
   const e = Vengaste > 1e-6 ? MB / Vengaste : 1e6
   const Lf = Math.max(p.ficha - zEng, 0.1)
-  const Hu = (0.5 * gl * p.diametro * Lf ** 3 * Kp) / (e + Lf)
+  const Hu = granular
+    ? (0.5 * gl * p.diametro * Lf ** 3 * Kp) / (e + Lf)
+    : (9 * apoio.c * p.diametro * Math.max(Lf - 1.5 * p.diametro, 0)) / (1 + e / Lf)
   const fsFicha = Vengaste > 1e-6 ? Hu / Vengaste : Infinity
 
-  // estaca de reação: areia abaixo da base da argila + argila abaixo da ruptura
+  // estaca de reação: trecho embutido no apoio + camada mole (φ = 0) abaixo da ruptura, se houver
   const cotaPontaR = -p.comprimentoReacao
   const embSolo = Math.max(baseArgila - cotaPontaR, 0)
-  const HuSand = 1.5 * Kp * gl * p.diametroReacao * embSolo ** 2
-  const suMin = Math.min(...layers.filter((l) => (l.phi ?? 0) === 0).map((l) => l.c), Infinity)
+  const HuSand = granular
+    ? 1.5 * Kp * gl * p.diametroReacao * embSolo ** 2
+    : 9 * apoio.c * p.diametroReacao * Math.max(embSolo - 1.5 * p.diametroReacao, 0)
+  const suMin = Math.min(...layers.filter((l, i) => (l.phi ?? 0) === 0 && i !== apoio.indice).map((l) => l.c), Infinity)
   const lArgilaAbaixo =
     yRupturaReacao != null ? Math.max(yRupturaReacao - baseArgila - 1.5 * p.diametroReacao, 0) : 0
   const HuClay = Number.isFinite(suMin) ? 9 * suMin * p.diametroReacao * lArgilaAbaixo : 0
@@ -256,6 +309,7 @@ export function dimensionarCortina(
     cotaRupturaReacao: yRupturaReacao,
     HuReacao,
     fsReacao,
+    apoio,
     ancorada: yRupturaReacao == null ? true : cotaPontaR < yRupturaReacao - 1,
     fichaNecessaria: buscarFicha ? fichaMinima(H, q, fill, layers, p, T, yCruz, yRupturaReacao) : null,
   }
@@ -303,7 +357,7 @@ export function avisosCortina(e: Esforcos, p: ParamsCortina, f: ResultadoForca):
   if (e.fsFicha < 2) {
     out.push({
       nivel: 'erro',
-      texto: `Ficha de ${p.ficha.toFixed(1)} m insuficiente: resistência passiva na areia / esforço no engaste = ${Number.isFinite(e.fsFicha) ? e.fsFicha.toFixed(2) : '∞'} (mínimo 2,0). Aumente a ficha${e.fichaNecessaria != null ? ` (≈ ${e.fichaNecessaria.toFixed(1)} m com este esforço)` : ' (mais de 25 m: solução inviável nessa configuração)'}.`,
+      texto: `Ficha de ${p.ficha.toFixed(1)} m insuficiente: resistência passiva da camada de apoio / esforço no engaste = ${Number.isFinite(e.fsFicha) ? e.fsFicha.toFixed(2) : '∞'} (mínimo 2,0). Aumente a ficha${e.fichaNecessaria != null ? ` (≈ ${e.fichaNecessaria.toFixed(1)} m com este esforço)` : ' (mais de 25 m: solução inviável nessa configuração)'}.`,
     })
   }
   if (!e.ancorada) {
@@ -348,8 +402,7 @@ export async function analisarCortina(
   p: ParamsCortina,
   onProgress?: (msg: string) => void
 ): Promise<AnaliseCortina> {
-  const baseArgila = Math.min(...layers.filter((l) => (l.phi ?? 0) === 0).map((l) => l.y_base ?? 0), 0)
-  const yPonta = baseArgila - p.ficha
+  const yPonta = resolverApoio(layers, p).cotaTopo - p.ficha
   const forca = await forcaNecessaria(geo, layers, fill, coverage, p, yPonta, 'bishop', onProgress)
   const yReacao = cotaRupturaEm(forca.circulo.circle, p.x + p.distReacao)
   const esforcos = dimensionarCortina(

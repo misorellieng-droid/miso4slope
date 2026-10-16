@@ -96,3 +96,41 @@ describe('fluxo completo', () => {
     expect(rija.forca.T).toBeLessThan(mole.forca.T)
   }, 300_000)
 })
+
+describe('contenção sem solo mole (qualquer solo de apoio)', () => {
+  const residual: Layer[] = [
+    { name: 'Solo residual', y_top: 0, y_base: -8, c: 10, phi: 28, gamma: 18 },
+    { name: 'Rocha alterada', y_top: -8, y_base: -20, c: 30, phi: 35, gamma: 21 },
+  ]
+  const g: SlopeGeometry = { ...geo, analysis_condition: 'drained', water_table_depth: 6, surcharge_q: 10 }
+
+  test('apoio automático sem camada mole: ficha começa no terreno, com φ da primeira camada', async () => {
+    const r = await analisarCortina(g, residual, fill, cov, { ...CORTINA_PADRAO, comprimentoReacao: 12 })
+    expect(r.esforcos.apoio.indice).toBe(0)
+    expect(r.esforcos.apoio.cotaTopo).toBe(0)
+    expect(r.esforcos.apoio.phi).toBe(28)
+    expect(r.esforcos.Ptotal).toBeGreaterThan(0) // há empuxo do aterro mesmo se T = 0
+  }, 300_000)
+
+  test('camada de apoio escolhida muda a ficha necessária', () => {
+    const base = { ...CORTINA_PADRAO }
+    const a = dimensionarCortina(4, 10, fill, residual, { ...base, camadaApoio: 0 }, 0, null, null)
+    const b = dimensionarCortina(4, 10, fill, residual, { ...base, camadaApoio: 1 }, 0, null, null)
+    expect(a.apoio.nome).toBe('Solo residual')
+    expect(b.apoio.nome).toBe('Rocha alterada')
+    expect(b.apoio.cotaTopo).toBe(-8)
+  })
+
+  test('com camada mole, o apoio automático é a camada logo abaixo dela', () => {
+    const e = dimensionarCortina(3.5, 20, fill, layers(14), CORTINA_PADRAO, 0, null, null)
+    expect(e.apoio.nome).toBe('Areia')
+    expect(e.apoio.cotaTopo).toBe(-15)
+  })
+
+  test('apoio coesivo (φ = 0) usa resistência não drenada na ficha', () => {
+    const argilaRija: Layer[] = [{ name: 'Argila rija', y_top: 0, y_base: -15, c: 80, phi: 0, gamma: 19 }]
+    const e = dimensionarCortina(3.5, 0, fill, argilaRija, { ...CORTINA_PADRAO, camadaApoio: 0 }, 0, null, null)
+    expect(e.Hu).toBeGreaterThan(0)
+    expect(e.apoio.phi).toBe(0)
+  })
+})

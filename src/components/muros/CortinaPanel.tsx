@@ -3,6 +3,7 @@ import { AlertTriangle, Loader2, Play, XCircle } from 'lucide-react'
 import {
   analisarCortina,
   CORTINA_PADRAO,
+  resolverApoio,
   type AnaliseCortina,
   type ParamsCortina,
 } from '../../engine/argilaMole/cortina'
@@ -12,7 +13,7 @@ import { NumberField } from '../forms/NumberField'
 import { CortinaCroqui } from './CortinaCroqui'
 
 // Cortina de estacas na face vertical do aterro, atirantada a uma estaca de
-// reação, com ficha na camada resistente. O perfil, as camadas e o aterro vêm
+// reação, com ficha numa camada de apoio qualquer (solo mole ou não). O perfil, as camadas e o aterro vêm
 // da Nova Análise (a face do aterro é tratada como vertical, sem bermas).
 
 const CARD = 'rounded-lg border border-border bg-surface p-4'
@@ -71,8 +72,9 @@ export function CortinaPanel() {
 
   const e = res?.esforcos
   const f = res?.forca
-  // base da argila mole = base da camada de φ = 0 mais funda (topo da camada resistente)
-  const baseArgila = Math.min(...layers.filter((l) => (l.phi ?? 0) === 0).map((l) => l.y_base ?? 0), 0)
+  const apoio = resolverApoio(layers, p)
+  const baseArgila = apoio.cotaTopo
+  const temMole = layers.some((l) => (l.phi ?? 0) === 0)
   const temErro = res?.avisos.some((a) => a.nivel === 'erro') ?? false
 
   return (
@@ -96,11 +98,12 @@ export function CortinaPanel() {
             <span className="text-text-primary">{geo.analysis_condition === 'undrained' ? 'não drenada' : 'drenada'}</span>
           </div>
           <div>
-            Base da argila mole (topo da camada resistente):{' '}
-            <span className="font-mono text-text-primary">{fmt(baseArgila, 1)} m</span>
+            Camada de apoio da ficha:{' '}
+            <span className="text-text-primary">{apoio.nome}</span>
           </div>
           <div>
-            Espessura da argila mole: <span className="font-mono text-text-primary">{fmt(-baseArgila, 1)} m</span>
+            Topo do apoio: <span className="font-mono text-text-primary">{fmt(baseArgila, 1)} m</span>
+            {temMole && <span> (espessura da camada mole acima: {fmt(-baseArgila, 1)} m)</span>}
           </div>
           <div>
             Ponta da estaca com a ficha adotada:{' '}
@@ -132,8 +135,20 @@ export function CortinaPanel() {
         <div className={CARD}>
           <div className="mb-2 text-xs font-medium uppercase tracking-wide text-text-secondary">Solo de apoio e materiais</div>
           <div className="grid grid-cols-2 gap-2">
-            <NumberField label="φ' da areia" value={p.phiAreia} step={1} suffix="°" onChange={(v) => set('phiAreia', v)} />
-            <NumberField label="γ da areia" value={p.gammaAreia} step={0.5} suffix="kN/m³" onChange={(v) => set('gammaAreia', v)} />
+            <label className="col-span-2 flex flex-col gap-1">
+              <span className="text-xs text-text-secondary">Camada de apoio da ficha (qualquer solo)</span>
+              <select value={p.camadaApoio} onChange={(ev) => set('camadaApoio', Number(ev.target.value))} className={SELECT}>
+                <option value={-1}>Automática (abaixo da camada mole; sem camada mole, desde o terreno)</option>
+                {layers.map((l, i) => (
+                  <option key={i} value={i}>
+                    {i + 1} · {l.name} (c {fmt(l.c, 0)} kPa, φ {fmt(l.phi ?? 0, 0)}°, γ {fmt(l.gamma, 1)})
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="col-span-2 text-[11px] text-text-secondary">
+              Resistência passiva usada: {apoio.phi >= 5 ? `granular (φ' ${fmt(apoio.phi, 0)}°, coesão desprezada)` : `coesiva (c = ${fmt(apoio.c, 0)} kPa)`}.
+            </div>
             <NumberField label="fyk do aço" value={p.fyk} step={50} suffix="MPa" onChange={(v) => set('fyk', v)} />
             <label className="flex flex-col gap-1">
               <span className="text-xs text-text-secondary">Empuxo do aterro</span>
@@ -230,7 +245,7 @@ export function CortinaPanel() {
             </div>
           </div>
 
-          <CortinaCroqui geo={geo} layers={layers} p={p} res={res} />
+          <CortinaCroqui geo={geo} layers={layers} fill={fill} p={p} res={res} />
 
           <div className={CARD}>
             <div className="mb-2 flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-text-secondary">
@@ -245,6 +260,56 @@ export function CortinaPanel() {
               ))}
             </ul>
           </div>
+
+          <details className={CARD}>
+            <summary className="cursor-pointer text-xs font-medium uppercase tracking-wide text-text-secondary">
+              Sequência executiva típica
+            </summary>
+            <ol className="mt-3 list-decimal space-y-2 pl-5 text-xs text-text-secondary">
+              <li>
+                <span className="font-medium text-text-primary">Preparo e instrumentação:</span> locação, limpeza,
+                piezômetros, placas de recalque e inclinômetros instalados antes de qualquer carga.
+              </li>
+              <li>
+                <span className="font-medium text-text-primary">Plataforma de trabalho:</span> sobre solo mole, aterro
+                de trabalho leve (geotêxtil + brita) para o equipamento de estacas; sem ele, o equipamento instabiliza o
+                terreno.
+              </li>
+              <li>
+                <span className="font-medium text-text-primary">Estacas de reação primeiro</span> (atrás da cortina) e
+                depois as estacas da cortina, até a ficha dimensionada; em argila mole, com camisa ou lama para evitar
+                estrangulamento do fuste; concretagem contínua e ensaio de integridade.
+              </li>
+              <li>
+                <span className="font-medium text-text-primary">Vigas de coroamento</span> da cortina e de cabeça da
+                estaca de reação, com as cabeças de ancoragem do tirante embutidas.
+              </li>
+              <li>
+                <span className="font-medium text-text-primary">Aterro até a cota do tirante, em camadas</span>{' '}
+                compactadas, com velocidade de alteamento controlada pela poropressão. Nessa fase as estacas trabalham
+                em balanço: verifique a altura máxima de aterro antes de o tirante entrar.
+              </li>
+              <li>
+                <span className="font-medium text-text-primary">Tirantes</span> em bainha livre, protegidos contra
+                corrosão, ligados às duas vigas; pré-tensão pequena conforme o projeto.
+              </li>
+              <li>
+                <span className="font-medium text-text-primary">Painel de fechamento e dreno</span> entre as estacas,
+                em etapas junto com o aterro, com barbacãs e dreno geocomposto atrás.
+              </li>
+              <li>
+                <span className="font-medium text-text-primary">Aterro até a cota final</span> (GC conforme projeto),
+                compactação leve perto da cortina; sobrecarga e pavimento só quando o monitoramento permitir.
+              </li>
+              <li>
+                <span className="font-medium text-text-primary">Monitoramento contínuo:</span> deslocamento da cortina,
+                recalque, poropressão e carga nos tirantes (célula de carga), com critérios de parada definidos.
+              </li>
+            </ol>
+            <p className="mt-3 text-[11px] text-text-secondary">
+              Sequência típica de referência. O detalhamento é do projetista e do executor.
+            </p>
+          </details>
         </>
       )}
     </div>

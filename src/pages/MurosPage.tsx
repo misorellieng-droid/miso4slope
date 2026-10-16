@@ -280,7 +280,7 @@ export function MurosPage({ soloAvulso }: { soloAvulso?: SoloMuro } = {}) {
       {(
         [
           ['muros', 'Verificação de muros'],
-          ['argila', 'Argila mole (colunas / cortina)'],
+          ['argila', 'Pré-dimensionamento de contenções'],
         ] as const
       ).map(([id, rotuloAba]) => (
         <button
@@ -298,16 +298,16 @@ export function MurosPage({ soloAvulso }: { soloAvulso?: SoloMuro } = {}) {
     return (
       <div className="mx-auto max-w-7xl">
         {seletorAba}
-        <h1 className="mb-1 font-sans text-xl font-bold text-text-primary">Pré-dimensionamento sobre argila mole</h1>
+        <h1 className="mb-1 font-sans text-xl font-bold text-text-primary">Pré-dimensionamento de contenções</h1>
         <p className="mb-6 text-sm text-text-secondary">
-          Hipótese 1: faixa de colunas (CMC ou brita) com colchão de geogrelha. Hipótese 2: cortina de estacas
-          atirantada. Pré-dimensionamento preliminar; não é projeto executivo.
+          Hipótese 1: faixa de colunas (CMC ou brita) com colchão de geogrelha, para solo mole. Hipótese 2: cortina de
+          estacas atirantada, para qualquer perfil de solo. Pré-dimensionamento preliminar; não é projeto executivo.
         </p>
         <div className="mb-4 flex w-fit rounded-md border border-border p-0.5">
           {(
             [
-              ['faixa', '1 · Faixa de colunas'],
-              ['cortina', '2 · Cortina de estacas'],
+              ['faixa', '1 · Faixa de colunas (solo mole)'],
+              ['cortina', '2 · Cortina de estacas (qualquer solo)'],
             ] as const
           ).map(([id, rotuloSol]) => (
             <button

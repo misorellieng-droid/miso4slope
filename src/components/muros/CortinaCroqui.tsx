@@ -1,7 +1,7 @@
 import { useRef } from 'react'
 import { Download } from 'lucide-react'
 import type { AnaliseCortina, ParamsCortina } from '../../engine/argilaMole/cortina'
-import type { Layer, SlopeGeometry } from '../../engine/types'
+import type { FillMaterial, Layer, SlopeGeometry } from '../../engine/types'
 
 // Croqui da cortina de estacas atirantada, desenhado a partir do
 // pré-dimensionamento. A estaca é desenhada com a ficha DIMENSIONADA (a
@@ -11,6 +11,7 @@ import type { Layer, SlopeGeometry } from '../../engine/types'
 interface Props {
   geo: SlopeGeometry
   layers: Layer[]
+  fill: FillMaterial
   p: ParamsCortina
   res: AnaliseCortina
 }
@@ -18,19 +19,24 @@ interface Props {
 const fmt = (v: number, d = 2) => v.toFixed(d).replace('.', ',')
 const W = 1100
 
-export function CortinaCroqui({ geo, layers, p, res }: Props) {
+export function CortinaCroqui({ geo, layers, fill, p, res }: Props) {
   const svgRef = useRef<SVGSVGElement>(null)
   const { forca, esforcos: e } = res
   const H = geo.total_height
   const q = geo.surcharge_q ?? 0
-  const baseArgila = Math.min(...layers.filter((l) => (l.phi ?? 0) === 0).map((l) => l.y_base ?? 0), 0)
+  const baseArgila = e.apoio.cotaTopo // topo da camada de apoio da ficha
 
   // ficha do desenho: a dimensionada; se não há solução até 25 m, a informada (com aviso)
   const fichaInviavel = e.fichaNecessaria == null && e.fsFicha < 2
   const fichaDes = e.fichaNecessaria != null ? Math.max(e.fichaNecessaria, 0) : p.ficha
   const yPonta = baseArgila - fichaDes
   const yFundo = Math.min(yPonta, -p.comprimentoReacao) - 2.5
-  const suVals = layers.filter((l) => (l.phi ?? 0) === 0).map((l) => l.c)
+  // camadas abaixo do terreno, com topo/base em cota (a mais funda vai até o fundo do desenho)
+  const camadas = layers
+    .map((l, i) => ({ l, i, top: Math.min(l.y_top ?? 0, 0), base: l.y_base ?? yFundo }))
+    .filter((c) => c.base < c.top)
+    .sort((a, b) => b.top - a.top)
+    .map((c, k, arr) => ({ ...c, base: k === arr.length - 1 ? Math.min(c.base, yFundo) : c.base }))
 
   const xr = p.x + p.distReacao
   const xmin = p.x - 9
@@ -146,9 +152,17 @@ export function CortinaCroqui({ geo, layers, p, res }: Props) {
         </text>
 
         {/* argila e areia */}
-        <rect {...rect(xmin, xmax, baseArgila, 0)} fill="#e4eefa" />
-        <rect {...rect(xmin, xmax, yFundo, baseArgila)} fill="url(#dots)" />
-        <line x1={sx(xmin)} y1={sy(baseArgila)} x2={sx(xmax)} y2={sy(baseArgila)} stroke="#9ca3af" strokeWidth={1.2} />
+        {camadas.map((c, k) => {
+          const mole = (c.l.phi ?? 0) === 0
+          return (
+            <g key={c.i}>
+              <rect {...rect(xmin, xmax, Math.max(c.base, yFundo), c.top)} fill={mole ? (k % 2 ? '#d3e2f4' : '#e4eefa') : '#f1ecdd'} />
+              {!mole && <rect {...rect(xmin, xmax, Math.max(c.base, yFundo), c.top)} fill="url(#dots)" />}
+              <line x1={sx(xmin)} y1={sy(c.base)} x2={sx(xmax)} y2={sy(c.base)} stroke="#9ca3af" strokeWidth={0.8} />
+            </g>
+          )
+        })}
+        <line x1={sx(xmin)} y1={sy(baseArgila)} x2={sx(xmax)} y2={sy(baseArgila)} stroke="#6b7280" strokeWidth={1.6} />
 
         {/* aterro contido pela cortina */}
         <rect {...rect(p.x, xmax, 0, H)} fill="#f0e2a0" />
@@ -159,7 +173,10 @@ export function CortinaCroqui({ geo, layers, p, res }: Props) {
         <line x1={sx(xmin)} y1={sy(0)} x2={sx(p.x)} y2={sy(0)} stroke="#4b5563" strokeWidth={2} />
         <line x1={sx(xmin)} y1={sy(-geo.water_table_depth)} x2={sx(xmax)} y2={sy(-geo.water_table_depth)} stroke="#3b82f6" strokeWidth={1.4} strokeDasharray="7 5" />
         <text x={sx(xmin) + 6} y={sy(0) - 6} fontSize={12} fill="#6b7280">
-          APP / terreno natural
+          terreno natural
+        </text>
+        <text x={sx(xmin) + 6} y={sy(-geo.water_table_depth) + 14} fontSize={12} fill="#3b82f6">
+          N.A. a {fmt(geo.water_table_depth, 1)} m do terreno
         </text>
 
         {/* sobrecarga */}
@@ -216,24 +233,46 @@ export function CortinaCroqui({ geo, layers, p, res }: Props) {
         </text>
 
         {/* rótulos de material */}
-        <text x={sx((p.x + xr) / 2)} y={sy(baseArgila / 2)} fontSize={16} textAnchor="middle" fontWeight={700} fill="#3b556f">
-          ARGILA MOLE
-        </text>
-        {suVals.length > 0 && (
-          <text x={sx((p.x + xr) / 2)} y={sy(baseArgila / 2) + 20} fontSize={13} textAnchor="middle" fill="#3b556f">
-            su {fmt(Math.min(...suVals), 0)} a {fmt(Math.max(...suVals), 0)} kPa
-          </text>
-        )}
-        <text x={sx((p.x + xr) / 2)} y={sy(baseArgila - 2.2)} fontSize={15} textAnchor="middle" fontWeight={700} fill="#6b7280">
-          AREIA DE APOIO
-        </text>
-        <text x={sx(p.x + 1.5)} y={sy(0.55)} fontSize={14} fontWeight={700} fill="#7a6212">
+        {camadas.map((c) => {
+          const base = Math.max(c.base, yFundo)
+          const esp = c.top - c.base
+          const mole = (c.l.phi ?? 0) === 0
+          const meio = (c.top + base) / 2
+          const apoioFlag = c.i === e.apoio.indice ? ' · apoio da ficha' : ''
+          const dados = mole
+            ? `su ${fmt(c.l.c, 0)} kPa · γ ${fmt(c.l.gamma, 1)}`
+            : `c' ${fmt(c.l.c, 0)} kPa · φ' ${fmt(c.l.phi ?? 0, 0)}° · γ ${fmt(c.l.gamma, 1)}`
+          const xt = sx((p.x + xr) / 2)
+          return (
+            <g key={c.i} fill={mole ? '#3b556f' : '#6b7280'} textAnchor="middle">
+              {esp >= 1.4 ? (
+                <>
+                  <text x={xt} y={sy(meio) - 4} fontSize={14} fontWeight={700}>
+                    {c.l.name.toUpperCase()}
+                    {apoioFlag}
+                  </text>
+                  <text x={xt} y={sy(meio) + 14} fontSize={12}>
+                    {dados} · {fmt(esp, 1)} m
+                  </text>
+                </>
+              ) : (
+                <text x={xt} y={sy(meio) + 4} fontSize={12}>
+                  {c.l.name} · {dados} · {fmt(esp, 1)} m{apoioFlag}
+                </text>
+              )}
+            </g>
+          )
+        })}
+        <text x={sx(p.x + 1.5)} y={sy(1.15)} fontSize={14} fontWeight={700} fill="#7a6212">
           ATERRO COMPACTADO
+        </text>
+        <text x={sx(p.x + 1.5)} y={sy(0.45)} fontSize={12} fill="#7a6212">
+          c' {fmt(fill.c, 0)} kPa · φ' {fmt(fill.phi, 0)}° · γ {fmt(fill.gamma, 1)} kN/m³
         </text>
 
         {/* dimensões */}
         {dimV(xmax - 1.2, 0, H, `aterro ${fmt(H)} m`, 'esq')}
-        {dimV(xmax - 1.2, baseArgila, 0, `argila ${fmt(-baseArgila)} m`, 'esq')}
+        {baseArgila < -0.05 && dimV(xmax - 1.2, baseArgila, 0, `até o apoio ${fmt(-baseArgila)} m`, 'esq')}
         {dimV(p.x - 4.5, yPonta, H, `L = ${fmt(H - yPonta)} m`, 'esq', true)}
         {dimV(p.x + 2.2, yPonta, baseArgila, fichaInviavel ? 'ficha > 25 m' : `ficha ${fmt(fichaDes)} m`, 'dir', true)}
         {dimV(xr - 1.8, -p.comprimentoReacao, yTieEnd + 0.4, `L = ${fmt(p.comprimentoReacao + yTieEnd + 0.4)} m`, 'esq')}
