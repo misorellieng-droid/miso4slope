@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { AlertTriangle, CheckCircle2, ChevronDown, Download, FileDown, FileUp, Loader2, Play, Square, XCircle } from 'lucide-react'
 import { ArgilaMolePanel } from '../components/muros/ArgilaMolePanel'
+import { CortinaPanel } from '../components/muros/CortinaPanel'
 import { MuroCanvas, type MuroCanvasHandle } from '../components/muros/MuroCanvas'
 import { NumberField } from '../components/forms/NumberField'
 import { lerMurosSecoes, secaoCritica } from '../engine/muros/entrada'
@@ -77,6 +78,7 @@ export function MurosPage({ soloAvulso }: { soloAvulso?: SoloMuro } = {}) {
   const [params, setParams] = usePersistedState<ParametrosMuros>(P + 'params', PARAMETROS_PADRAO)
   const [verParams, setVerParams] = useState(false)
   const [aba, setAba] = usePersistedState<'muros' | 'argila'>(P + 'aba', 'muros')
+  const [solucao, setSolucao] = usePersistedState<'faixa' | 'cortina'>(P + 'solucao', 'faixa')
   const [responsavel, setResponsavel] = usePersistedState(P + 'responsavel', '')
 
   const [detalhes, setDetalhes] = useState<Record<string, DetalheSerial>>({})
@@ -278,7 +280,7 @@ export function MurosPage({ soloAvulso }: { soloAvulso?: SoloMuro } = {}) {
       {(
         [
           ['muros', 'Verificação de muros'],
-          ['argila', 'Argila mole: faixa de colunas'],
+          ['argila', 'Argila mole (colunas / cortina)'],
         ] as const
       ).map(([id, rotuloAba]) => (
         <button
@@ -298,10 +300,26 @@ export function MurosPage({ soloAvulso }: { soloAvulso?: SoloMuro } = {}) {
         {seletorAba}
         <h1 className="mb-1 font-sans text-xl font-bold text-text-primary">Pré-dimensionamento sobre argila mole</h1>
         <p className="mb-6 text-sm text-text-secondary">
-          Faixa de colunas (CMC ou brita) com colchão de geogrelha. Pré-dimensionamento preliminar; não é projeto
-          executivo.
+          Hipótese 1: faixa de colunas (CMC ou brita) com colchão de geogrelha. Hipótese 2: cortina de estacas
+          atirantada. Pré-dimensionamento preliminar; não é projeto executivo.
         </p>
-        <ArgilaMolePanel />
+        <div className="mb-4 flex w-fit rounded-md border border-border p-0.5">
+          {(
+            [
+              ['faixa', '1 · Faixa de colunas'],
+              ['cortina', '2 · Cortina de estacas'],
+            ] as const
+          ).map(([id, rotuloSol]) => (
+            <button
+              key={id}
+              onClick={() => setSolucao(id)}
+              className={`rounded px-3 py-1.5 text-sm font-medium ${solucao === id ? 'bg-brand text-white' : 'text-text-secondary hover:text-text-primary'}`}
+            >
+              {rotuloSol}
+            </button>
+          ))}
+        </div>
+        {solucao === 'faixa' ? <ArgilaMolePanel /> : <CortinaPanel />}
       </div>
     )
   }

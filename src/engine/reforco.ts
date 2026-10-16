@@ -30,7 +30,23 @@ export function momentoReforcos(
   const itens: ReforcoMobilizado[] = []
   let momento = 0
   const camadas = geo.reinforcement ?? []
-  if (camadas.length === 0) return { momentoSobreR: 0, itens }
+  for (const c of geo.curtains ?? []) {
+    if (c.x < x_left || c.x > x_right) continue
+    const inside = circle.R * circle.R - (c.x - circle.xc) ** 2
+    if (inside <= 0) continue
+    const yCruz = circle.yc - Math.sqrt(inside) // arco inferior
+    if (yCruz > c.y_top || yCruz < c.y_tip) continue
+    itens.push({
+      y: yCruz,
+      x_cruzamento: c.x,
+      T_projeto: c.T,
+      T_mobilizado: c.T,
+      ancoragem: 0,
+      T_necessario_arrancamento: 0,
+    })
+    momento += c.T * (circle.yc - yCruz)
+  }
+  if (camadas.length === 0) return { momentoSobreR: momento / circle.R, itens }
   const profile = buildProfile(geo, mode)
 
   for (const r of camadas) {
@@ -59,4 +75,18 @@ export function momentoReforcos(
     momento += Tmob * (circle.yc - r.y)
   }
   return { momentoSobreR: momento / circle.R, itens }
+}
+
+/**
+ * Círculo que sai pela face contida pela cortina (acima do terreno) não é um
+ * mecanismo do talude: a face é segurada pela cortina, e o empuxo do aterro é
+ * carga direta na estaca (dimensionada à parte). Esses círculos são descartados;
+ * só os que cruzam a cortina abaixo do terreno mobilizam a força T.
+ */
+export function saiPelaFaceContida(geo: SlopeGeometry, mode: AnalysisMode, x_left: number): boolean {
+  const curtains = geo.curtains
+  if (!curtains || curtains.length === 0) return false
+  const profile = buildProfile(geo, mode)
+  const yExit = groundY(x_left, profile)
+  return curtains.some((c) => x_left > c.x - 0.05 && yExit > 0.05)
 }

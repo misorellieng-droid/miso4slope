@@ -80,6 +80,7 @@ export interface SlopeGeometry {
   water_table_depth: number  // profundidade do NA abaixo do pé (m)
   gamma_water?: number       // peso esp. da água (padrão: 9.81)
   toe_elevation?: number     // cota absoluta do pé do talude (m), datum para importar sondagens
+  curtains?: CurtainForce[]            // cortinas de estacas: força T aplicada onde a ruptura cruza a cortina
   improvement?: ImprovementStrip[]     // faixas de solo melhorado (colunas CMC/brita), na fundação
   reinforcement?: ReinforcementLayer[] // geossintéticos horizontais (colchão sobre colunas ou na base do aterro)
   surcharge_q?: number       // sobrecarga uniforme na plataforma (kPa); 0/indefinido = sem sobrecarga
@@ -112,6 +113,16 @@ export interface ImprovementStrip {
   phi_col?: number       // graus (brita)
   n_stress?: number      // razão de concentração de tensão coluna/solo (brita)
   tau_col?: number       // kPa (cmc)
+}
+
+// Cortina de estacas em x: se a superfície de ruptura a cruza entre y_tip e
+// y_top, passa a atuar uma força horizontal T (kN/m de cortina) que resiste ao
+// movimento da massa. Círculos que passam abaixo da ponta não a mobilizam.
+export interface CurtainForce {
+  x: number
+  T: number
+  y_top: number
+  y_tip: number
 }
 
 // Reforço horizontal em y = y; atua onde a superfície de ruptura o cruza no

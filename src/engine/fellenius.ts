@@ -1,4 +1,4 @@
-import { momentoReforcos } from './reforco'
+import { momentoReforcos, saiPelaFaceContida } from './reforco'
 import { buildRawSlices, MIN_VALID_SLICES, surchargeRange } from './slices'
 import type {
   AnalysisResult,
@@ -82,6 +82,7 @@ export function felleniusFS(
     }
   })
 
+  if (saiPelaFaceContida(geo, fill == null ? 'corte' : 'aterro', x_left)) return null
   const reforco = momentoReforcos(circle, geo, fill == null ? 'corte' : 'aterro', x_left, x_right)
   const FS = (slices.reduce((a, s) => a + s.numerator_term, 0) + reforco.momentoSobreR) / sumWSinAlpha
   if (!Number.isFinite(FS) || FS <= 0) return null
