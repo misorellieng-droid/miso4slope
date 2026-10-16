@@ -92,7 +92,7 @@ export function ResultCard({ result, source = 'search', partialFS }: ResultCardP
           <div>
             Sobrecarga na plataforma:{' '}
             <span className="font-medium text-text-primary">{fmt(result.surcharge_q ?? 0, 1)} kPa</span>
-            {result.surcharge_x_end != null && result.surcharge_x_start != null
+            {result.surcharge_x_end != null && Number.isFinite(result.surcharge_x_end) && result.surcharge_x_start != null
               ? ` (${fmt(result.surcharge_x_end - result.surcharge_x_start, 1)} m a partir da crista)`
               : ' (toda a plataforma)'}
           </div>
