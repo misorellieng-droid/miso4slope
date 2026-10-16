@@ -20,7 +20,8 @@ import type {
 
 export interface FaixaColunas {
   tipo: 'brita' | 'cmc'
-  frente: number // m da borda da faixa até o pé (positivo = à frente do pé)
+  xRef: number // m, posição x do pé de referência (0 = pé do talude; ou o pé de uma bancada superior)
+  frente: number // m da borda da faixa até o pé de referência (positivo = à frente do pé)
   largura: number // m, largura total da faixa (na direção x)
   comprimento: number // m, do terreno até a ponta (inclui o embutimento no apoio)
   diametro: number // m
@@ -41,6 +42,7 @@ export interface ColchaoGeogrelha {
 
 export const FAIXA_PADRAO: FaixaColunas = {
   tipo: 'brita',
+  xRef: 0,
   frente: 3,
   largura: 10,
   comprimento: 15.5,
@@ -62,8 +64,8 @@ export function razaoAreas(f: Pick<FaixaColunas, 'diametro' | 'malha' | 'arranjo
 
 export function faixaParaMelhoria(f: FaixaColunas): ImprovementStrip {
   return {
-    x_start: -f.frente,
-    x_end: -f.frente + f.largura,
+    x_start: f.xRef - f.frente,
+    x_end: f.xRef - f.frente + f.largura,
     y_top: 0,
     y_base: -f.comprimento,
     kind: f.tipo,
@@ -80,7 +82,7 @@ export function colchaoParaReforco(c: ColchaoGeogrelha, f: FaixaColunas, geo: Sl
   const xCrest = profile[profile.length - 2].x
   return {
     y: Math.min(c.espessura * 0.25, 0.3),
-    x_start: -f.frente,
+    x_start: f.xRef - f.frente,
     x_end: xCrest + (c.alem_crista ?? 10),
     T: c.T,
     mu: c.mu ?? 0.6,
@@ -190,4 +192,21 @@ export async function varrerFaixa(
     }
   }
   return out
+}
+
+/** x dos pés do talude: o pé inferior e o pé de cada bancada acima (fim de cada berma). */
+export function pesDoTalude(geo: SlopeGeometry): number[] {
+  const prof = buildProfile(geo, 'aterro')
+  const xs: number[] = []
+  for (let i = 1; i < prof.length; i++) {
+    if (prof[i].y > prof[i - 1].y + 1e-9 && prof[i - 1].x >= -1e-9) xs.push(prof[i - 1].x)
+  }
+  return xs.length ? xs : [0]
+}
+
+/** A superfície crítica passa pela faixa? (sobreposição em x entre o arco e a faixa) */
+export function circuloAtravessaFaixa(r: AnalysisResult, f: FaixaColunas): boolean {
+  const x0 = f.xRef - f.frente
+  const x1 = x0 + f.largura
+  return r.x_right > x0 && r.x_left < x1
 }

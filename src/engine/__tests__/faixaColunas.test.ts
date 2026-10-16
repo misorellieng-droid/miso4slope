@@ -1,6 +1,14 @@
 import { describe, expect, test } from 'vitest'
 import { bishopFS } from '../bishop'
-import { alertasFaixa, FAIXA_PADRAO, faixaParaMelhoria, fsComFaixa, razaoAreas } from '../argilaMole/faixaColunas'
+import {
+  alertasFaixa,
+  circuloAtravessaFaixa,
+  FAIXA_PADRAO,
+  faixaParaMelhoria,
+  fsComFaixa,
+  pesDoTalude,
+  razaoAreas,
+} from '../argilaMole/faixaColunas'
 import type { Layer, SlopeGeometry } from '../types'
 
 const fill = { c: 8, phi: 25, gamma: 18 }
@@ -110,5 +118,49 @@ describe('busca com a faixa', () => {
   test('alerta de su baixo para brita', () => {
     expect(alertasFaixa(layers(10), FAIXA_PADRAO).some((a) => /su mínimo/.test(a.texto))).toBe(true)
     expect(alertasFaixa(layers(25), FAIXA_PADRAO).some((a) => /su mínimo/.test(a.texto))).toBe(false)
+  })
+})
+
+describe('posição da faixa em geometria com berma', () => {
+  const geoBerma: SlopeGeometry = {
+    bench_height: 1.75,
+    slope_ratio: 5,
+    berm_width: 30,
+    total_height: 3.5,
+    water_table_depth: 0.5,
+    analysis_condition: 'undrained',
+    surcharge_q: 20,
+  }
+  const camadas: Layer[] = [
+    { name: 'Argila', y_top: 0, y_base: -15, c: 12, phi: 0, gamma: 15 },
+    { name: 'Areia', y_top: -15, y_base: -18, c: 0, phi: 35, gamma: 19 },
+  ]
+  const local = { xc: 44.75, yc: 1.54, R: 11.51 } // mecanismo sob a bancada superior
+
+  test('pés do talude: inferior e pé da bancada superior', () => {
+    const pes = pesDoTalude(geoBerma)
+    expect(pes[0]).toBeCloseTo(0, 6)
+    expect(pes[1]).toBeCloseTo(1.75 * 5 + 30, 6)
+  })
+  test('faixa no pé inferior não altera o FS do mecanismo da bancada superior', () => {
+    const sem = bishopFS(local, geoBerma, camadas, fill, cov)!.FS
+    const f = { ...FAIXA_PADRAO, xRef: 0, largura: 10 }
+    const com = bishopFS(local, { ...geoBerma, improvement: [faixaParaMelhoria(f)] }, camadas, fill, cov)!.FS
+    expect(com).toBeCloseTo(sem, 10)
+  })
+  test('faixa no pé da bancada superior aumenta o FS desse mecanismo; malha mais fechada, mais ainda', () => {
+    const pe2 = pesDoTalude(geoBerma)[1]
+    const sem = bishopFS(local, geoBerma, camadas, fill, cov)!.FS
+    const a = { ...FAIXA_PADRAO, xRef: pe2, largura: 12, malha: 3 }
+    const b = { ...a, malha: 2 }
+    const fa = bishopFS(local, { ...geoBerma, improvement: [faixaParaMelhoria(a)] }, camadas, fill, cov)!.FS
+    const fb = bishopFS(local, { ...geoBerma, improvement: [faixaParaMelhoria(b)] }, camadas, fill, cov)!.FS
+    expect(fa).toBeGreaterThan(sem)
+    expect(fb).toBeGreaterThan(fa)
+  })
+  test('circuloAtravessaFaixa compara o arco com a faixa', () => {
+    const r = bishopFS(local, geoBerma, camadas, fill, cov)!
+    expect(circuloAtravessaFaixa(r, { ...FAIXA_PADRAO, xRef: 0 })).toBe(false)
+    expect(circuloAtravessaFaixa(r, { ...FAIXA_PADRAO, xRef: pesDoTalude(geoBerma)[1] })).toBe(true)
   })
 })

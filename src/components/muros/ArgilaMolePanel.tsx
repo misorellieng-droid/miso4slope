@@ -2,8 +2,10 @@ import { useMemo, useState } from 'react'
 import { AlertTriangle, Loader2, Play } from 'lucide-react'
 import {
   alertasFaixa,
+  circuloAtravessaFaixa,
   FAIXA_PADRAO,
   fsComFaixa,
+  pesDoTalude,
   razaoAreas,
   varrerFaixa,
   type ColchaoGeogrelha,
@@ -170,7 +172,17 @@ export function ArgilaMolePanel() {
             </select>
           </label>
           <div className="grid grid-cols-2 gap-2">
-            <NumberField label="À frente do pé" value={f.frente} step={0.5} min={0} suffix="m" onChange={(v) => set('frente', v)} />
+            <label className="col-span-2 flex flex-col gap-1">
+              <span className="text-xs text-text-secondary">Faixa posicionada no pé de</span>
+              <select value={f.xRef} onChange={(ev) => set('xRef', Number(ev.target.value))} className={SELECT}>
+                {pesDoTalude(geo).map((xp, i) => (
+                  <option key={i} value={xp}>
+                    {i === 0 ? 'talude inferior' : `bancada ${i + 1}`} (x = {fmt(xp, 1)} m)
+                  </option>
+                ))}
+              </select>
+            </label>
+            <NumberField label="À frente do pé" value={f.frente} step={0.5} suffix="m" onChange={(v) => set('frente', v)} />
             <NumberField label="Largura da faixa" value={f.largura} step={0.5} min={1} suffix="m" onChange={(v) => set('largura', v)} />
             <NumberField label="Comprimento das colunas" value={f.comprimento} step={0.5} min={1} suffix="m" onChange={(v) => set('comprimento', v)} />
             <NumberField label="Diâmetro" value={f.diametro} step={0.05} min={0.1} suffix="m" onChange={(v) => set('diametro', v)} />
@@ -284,6 +296,14 @@ export function ArgilaMolePanel() {
               {com.FS < FS_ALVO && ' Não atinge o FS exigido com esta faixa.'}
             </p>
           )}
+          {com && !circuloAtravessaFaixa(com.result, f) && (
+            <p className="mt-2 rounded-md border border-accent-red p-2 text-xs text-accent-red">
+              O círculo crítico (x de {fmt(com.result.x_left, 1)} a {fmt(com.result.x_right, 1)} m) não passa pela faixa
+              (x de {fmt(f.xRef - f.frente, 1)} a {fmt(f.xRef - f.frente + f.largura, 1)} m). Por isso malha, diâmetro e
+              largura não alteram o FS: o mecanismo que governa está fora da faixa. Posicione a faixa sob esse
+              mecanismo (campo "Faixa posicionada no pé de") ou trate-o por outra solução.
+            </p>
+          )}
         </div>
       )}
 
@@ -292,6 +312,12 @@ export function ArgilaMolePanel() {
           <div className="mb-2 text-xs font-medium uppercase tracking-wide text-text-secondary">
             FS por largura da faixa × malha
           </div>
+          {tabela.length > 1 && Math.max(...tabela.map((l) => l.FS)) - Math.min(...tabela.map((l) => l.FS)) < 0.005 && (
+            <p className="mb-2 rounded-md border border-accent-red p-2 text-xs text-accent-red">
+              O FS não muda com a largura nem com a malha: o círculo crítico não passa pela faixa. Mude a posição da
+              faixa (campo "Faixa posicionada no pé de").
+            </p>
+          )}
           <table className="w-full font-mono text-xs">
             <thead className="text-text-secondary">
               <tr className="border-b border-border text-left">
