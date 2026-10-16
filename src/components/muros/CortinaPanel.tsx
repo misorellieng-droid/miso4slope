@@ -70,6 +70,9 @@ export function CortinaPanel() {
 
   const e = res?.esforcos
   const f = res?.forca
+  // base da argila mole = base da camada de φ = 0 mais funda (topo da camada resistente)
+  const baseArgila = Math.min(...layers.filter((l) => (l.phi ?? 0) === 0).map((l) => l.y_base ?? 0), 0)
+  const temErro = res?.avisos.some((a) => a.nivel === 'erro') ?? false
 
   return (
     <div className="space-y-4">
@@ -90,6 +93,17 @@ export function CortinaPanel() {
           <div>
             Condição:{' '}
             <span className="text-text-primary">{geo.analysis_condition === 'undrained' ? 'não drenada' : 'drenada'}</span>
+          </div>
+          <div>
+            Base da argila mole (topo da camada resistente):{' '}
+            <span className="font-mono text-text-primary">{fmt(baseArgila, 1)} m</span>
+          </div>
+          <div>
+            Espessura da argila mole: <span className="font-mono text-text-primary">{fmt(-baseArgila, 1)} m</span>
+          </div>
+          <div>
+            Ponta da estaca com a ficha adotada:{' '}
+            <span className="font-mono text-text-primary">{fmt(baseArgila - p.ficha, 1)} m</span>
           </div>
         </div>
         <p className="mt-2 text-[11px] text-text-secondary">
@@ -162,6 +176,13 @@ export function CortinaPanel() {
                 <div className="font-sans text-xs text-text-secondary">alvo ≥ {fmt(p.fsAlvo, 2)}</div>
               </div>
             </div>
+            {temErro && (
+              <p className="mt-3 rounded-md border border-accent-red p-2 text-xs text-accent-red">
+                Este FS é condicional: ele assume que a cortina entrega T = {fmt(f.T, 0)} kN/m. As verificações abaixo
+                mostram que, como está dimensionada, a cortina não consegue entregar essa força. Corrija os itens em
+                vermelho antes de considerar o FS válido.
+              </p>
+            )}
           </div>
 
           <div className={CARD}>
