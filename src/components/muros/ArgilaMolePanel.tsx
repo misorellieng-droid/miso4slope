@@ -16,6 +16,7 @@ import {
 import type { FaceCoverage, FillMaterial, Layer, SlopeGeometry } from '../../engine/types'
 import { usePersistedState } from '../../lib/persist'
 import { NumberField } from '../forms/NumberField'
+import { FaixaCroqui } from './FaixaCroqui'
 
 // Pré-dimensionamento de solução sobre argila mole: faixa de colunas (CMC ou
 // brita) com colchão de geogrelha. O perfil, as camadas e o aterro vêm da
@@ -55,6 +56,8 @@ export function ArgilaMolePanel() {
   const [sem, setSem] = useState<ResultadoFaixa | null>(null)
   const [com, setCom] = useState<ResultadoFaixa | null>(null)
   const [tabela, setTabela] = useState<LinhaVarredura[] | null>(null)
+  // entradas usadas no último cálculo (o croqui precisa bater com o resultado mostrado)
+  const [snap, setSnap] = useState<{ f: FaixaColunas; colchao: ColchaoGeogrelha } | null>(null)
 
   const set = <K extends keyof FaixaColunas>(k: K, v: FaixaColunas[K]) => setFaixa({ ...f, [k]: v })
   const alertas = layers ? alertasFaixa(layers, f) : []
@@ -79,6 +82,7 @@ export function ArgilaMolePanel() {
       setProgresso('Sem tratamento…')
       const r0 = await fsComFaixa(geo, layers, fill, coverage, undefined, null, null)
       setSem(r0)
+      setSnap({ f, colchao })
       setProgresso('Com a faixa…')
       setCom(await fsComFaixa(geo, layers, fill, coverage, undefined, f, colchaoAtivo))
     } catch (e) {
@@ -309,6 +313,8 @@ export function ArgilaMolePanel() {
           )}
         </div>
       )}
+
+      {com && snap && <FaixaCroqui geo={geo} layers={layers} fill={fill} f={snap.f} colchao={snap.colchao} sem={sem} com={com} />}
 
       {tabela && (
         <div className={CARD}>
