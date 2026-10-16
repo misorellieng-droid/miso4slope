@@ -225,7 +225,7 @@ export function ArgilaMolePanel() {
             Colchão de brita com geogrelha
           </div>
           <div className="grid grid-cols-2 gap-2">
-            <NumberField label="Espessura do colchão" value={colchao.espessura} step={0.1} min={0.2} suffix="m" onChange={(v) => setColchao({ ...colchao, espessura: v })} />
+            <NumberField label="Espessura do colchão (informativa: não altera o FS)" value={colchao.espessura} step={0.1} min={0.2} suffix="m" onChange={(v) => setColchao({ ...colchao, espessura: v })} />
             <NumberField
               label="Resistência de projeto T (0 = sem geogrelha)"
               value={colchao.T}
@@ -244,8 +244,11 @@ export function ArgilaMolePanel() {
             />
           </div>
           <p className="mt-2 text-[11px] leading-snug text-text-secondary">
-            A geogrelha só entra no equilíbrio onde a superfície de ruptura a cruza com ancoragem suficiente; o
-            arrancamento limita a força mobilizada.
+            O colchão de brita é a plataforma de trabalho e de transferência de carga para as colunas; a geogrelha dentro
+            dele é o que entra no cálculo, como força horizontal T. Com T = 0 não há geogrelha e o colchão não altera o
+            FS. A espessura do colchão, seu peso e sua resistência própria não são modelados. A geogrelha só age onde a
+            superfície de ruptura a cruza com ancoragem suficiente (aumente "Reforço além da crista" para alcançar
+            círculos profundos); o arrancamento limita a força mobilizada.
           </p>
 
           <div className="mt-4 flex flex-wrap items-center gap-2">
