@@ -204,18 +204,22 @@ function buildPanelItems(
   if (mode === 'aterro') {
     const resolvedZones = fillZones.length ? resolveFillZones(fillZones, geometry.total_height) : []
     resolvedZones.forEach((z, i) => {
+      const { top, base } = layerBoundaryY(z, refX, terrain)
       items.push({
         name: z.name,
         c: z.c,
         phi: z.phi,
         gamma: z.gamma,
-        top: z.y_top!,
-        base: z.y_base!,
+        top,
+        base,
         color: ZONE_COLORS[i % ZONE_COLORS.length],
       })
     })
-    const fillTop = resolvedZones.length ? resolvedZones[resolvedZones.length - 1].y_base! : geometry.total_height
-    const fillBase = terrain && terrain.length ? groundY(refX, terrain) : 0
+    const topZones = resolvedZones.filter((_, i) => fillZones[i].anchor !== 'base')
+    const baseZones = resolvedZones.filter((_, i) => fillZones[i].anchor === 'base')
+    const fillTop = topZones.length ? topZones[topZones.length - 1].y_base! : geometry.total_height
+    const groundRef = terrain && terrain.length ? groundY(refX, terrain) : 0
+    const fillBase = groundRef + baseZones.reduce((s, z) => s + (z.y_top! - z.y_base!), 0)
     items.push({
       name: 'Aterro (corpo)',
       c: fill.c,

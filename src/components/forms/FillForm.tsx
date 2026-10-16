@@ -32,6 +32,17 @@ const EMPTY_ZONE: FillZone = {
   gamma: 0,
 }
 
+// Camada de base em rachão (enrocamento) sobre a fundação — valores típicos, sempre editáveis
+const BASE_ZONE: FillZone = {
+  name: 'Rachão (base)',
+  anchor: 'base',
+  thickness: 1.0,
+  compaction_degree: 100,
+  c: 0,
+  phi: 40,
+  gamma: 20,
+}
+
 export function FillForm({
   value,
   onChange,
@@ -57,6 +68,7 @@ export function FillForm({
     if (zones.length) {
       onZonesChange(
         zones.map((z) => {
+          if (z.anchor === 'base') return z
           const est = estimateFromCompaction(merged, z.compaction_degree)
           return { ...z, c: est.c, phi: est.phi, gamma: est.gamma }
         })
@@ -85,7 +97,7 @@ export function FillForm({
 
   const updateZone = (index: number, patch: Partial<FillZone>) => {
     const merged = { ...zones[index], ...patch }
-    if (reference) {
+    if (reference && merged.anchor !== 'base') {
       const est = estimateFromCompaction(reference, merged.compaction_degree)
       onZonesChange(zones.map((z, i) => (i === index ? { ...merged, c: est.c, phi: est.phi, gamma: est.gamma } : z)))
     } else {
@@ -97,6 +109,7 @@ export function FillForm({
     const base = reference ? estimateFromCompaction(reference, EMPTY_ZONE.compaction_degree) : EMPTY_ZONE
     onZonesChange([...zones, { ...EMPTY_ZONE, ...base }])
   }
+  const addBaseZone = () => onZonesChange([...zones, { ...BASE_ZONE }])
 
   return (
     <div className="space-y-5">
@@ -300,7 +313,13 @@ export function FillForm({
                 <Trash2 size={16} />
               </button>
             </div>
-            <div className="grid grid-cols-5 gap-2">
+            {zone.anchor === 'base' && (
+              <p className="mb-2 text-xs text-brand">
+                Camada de base: medida a partir do terreno natural para cima (acompanha o terreno). Parâmetros
+                informados diretamente, não derivam de GC.
+              </p>
+            )}
+            <div className={zone.anchor === 'base' ? 'grid grid-cols-4 gap-2' : 'grid grid-cols-5 gap-2'}>
               <NumberField
                 label="Espessura"
                 value={zone.thickness}
@@ -309,21 +328,23 @@ export function FillForm({
                 suffix="m"
                 onChange={(v) => updateZone(i, { thickness: v })}
               />
-              <NumberField
-                label="GC"
-                value={zone.compaction_degree}
-                step={1}
-                min={1}
-                suffix="%"
-                onChange={(v) => updateZone(i, { compaction_degree: v })}
-              />
+              {zone.anchor !== 'base' && (
+                <NumberField
+                  label="GC"
+                  value={zone.compaction_degree}
+                  step={1}
+                  min={1}
+                  suffix="%"
+                  onChange={(v) => updateZone(i, { compaction_degree: v })}
+                />
+              )}
               <NumberField
                 label="c'"
                 value={zone.c}
                 step={0.5}
                 min={0}
                 suffix="kPa"
-                computed={!!reference}
+                computed={!!reference && zone.anchor !== 'base'}
                 onChange={(v) => updateZone(i, { c: v })}
               />
               <NumberField
@@ -332,7 +353,7 @@ export function FillForm({
                 step={0.5}
                 min={0}
                 suffix="°"
-                computed={!!reference}
+                computed={!!reference && zone.anchor !== 'base'}
                 onChange={(v) => updateZone(i, { phi: v })}
               />
               <NumberField
@@ -341,15 +362,20 @@ export function FillForm({
                 step={0.1}
                 min={0}
                 suffix="kN/m³"
-                computed={!!reference}
+                computed={!!reference && zone.anchor !== 'base'}
                 onChange={(v) => updateZone(i, { gamma: v })}
               />
             </div>
           </div>
         ))}
-        <button onClick={addZone} className="flex items-center gap-1 text-xs text-brand hover:underline">
-          <Plus size={14} /> Adicionar zona
-        </button>
+        <div className="flex gap-4">
+          <button onClick={addZone} className="flex items-center gap-1 text-xs text-brand hover:underline">
+            <Plus size={14} /> Adicionar zona
+          </button>
+          <button onClick={addBaseZone} className="flex items-center gap-1 text-xs text-brand hover:underline">
+            <Plus size={14} /> Adicionar camada de base (rachão)
+          </button>
+        </div>
       </div>
 
       <div>

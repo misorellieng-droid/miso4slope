@@ -53,11 +53,17 @@ export interface CompactionReference {
 // Zona de compactação diferenciada perto da plataforma (ex.: últimas
 // camadas de aterro, compactadas a um GC mais alto que o corpo). Medida por
 // espessura a partir do topo da zona anterior (ou da plataforma, na primeira).
+//
+// Com anchor='base' a zona é uma camada de base (ex.: rachão sobre a fundação, para
+// permitir o tráfego): medida a partir do terreno natural PARA CIMA, acompanha o
+// terreno e não entra no empilhamento a partir da plataforma. Seus c'/φ'/γ são
+// sempre informados diretamente (não derivam de GC).
 export interface FillZone {
   id?: string
   name: string
+  anchor?: 'top' | 'base'   // padrão 'top' (a partir da plataforma)
   thickness: number         // espessura desta zona (m)
-  compaction_degree: number // GC (%)
+  compaction_degree: number // GC (%) — ignorado em zonas de base
   c: number
   phi: number
   gamma: number

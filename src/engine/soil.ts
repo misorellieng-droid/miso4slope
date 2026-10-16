@@ -17,6 +17,19 @@ export interface SoilParams {
 export function resolveFillZones(zones: FillZone[], total_height: number): Layer[] {
   let yTop = total_height
   return zones.map((zone) => {
+    if (zone.anchor === 'base') {
+      // faixa logo acima do terreno natural: depth negativa = altura acima da superfície local
+      return {
+        name: zone.name,
+        y_top: zone.thickness,
+        y_base: 0,
+        depth_top: -zone.thickness,
+        depth_base: 0,
+        c: zone.c,
+        phi: zone.phi,
+        gamma: zone.gamma,
+      }
+    }
     const yBase = yTop - zone.thickness
     const resolved: Layer = {
       name: zone.name,
