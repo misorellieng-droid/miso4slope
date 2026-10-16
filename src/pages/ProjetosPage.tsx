@@ -215,7 +215,7 @@ export function ProjetosPage() {
 
       <label className="mb-4 flex w-fit cursor-pointer items-center gap-2 text-sm text-text-secondary">
         <input type="checkbox" checked={mostrarOcultos} onChange={(e) => setMostrarOcultos(e.target.checked)} />
-        Mostrar cancelados e excluídos
+        Mostrar concluídos, cancelados e excluídos
       </label>
 
       {error && (

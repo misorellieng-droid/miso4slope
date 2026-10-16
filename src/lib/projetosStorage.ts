@@ -79,7 +79,7 @@ export interface CamadaRow {
   ordem: number
 }
 
-/** Por padrão oculta cancelados e excluídos; `mostrarOcultos` traz todos. */
+/** Por padrão oculta concluídos, cancelados e excluídos; `mostrarOcultos` traz todos. */
 export async function listProjetos(mostrarOcultos = false): Promise<ProjetoSummary[]> {
   if (!supabase) return []
 
