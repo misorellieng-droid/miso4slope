@@ -80,6 +80,7 @@ export interface SlopeGeometry {
   water_table_depth: number  // profundidade do NA abaixo do pé (m)
   gamma_water?: number       // peso esp. da água (padrão: 9.81)
   toe_elevation?: number     // cota absoluta do pé do talude (m), datum para importar sondagens
+  min_arc_width?: number               // largura mínima (m) da superfície de ruptura; descarta mecanismos locais (padrão 3 m)
   curtains?: CurtainForce[]            // cortinas de estacas: força T aplicada onde a ruptura cruza a cortina
   improvement?: ImprovementStrip[]     // faixas de solo melhorado (colunas CMC/brita), na fundação
   reinforcement?: ReinforcementLayer[] // geossintéticos horizontais (colchão sobre colunas ou na base do aterro)

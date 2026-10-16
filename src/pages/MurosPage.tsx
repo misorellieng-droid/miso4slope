@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { AlertTriangle, CheckCircle2, ChevronDown, Download, FileDown, FileUp, Loader2, Play, Square, XCircle } from 'lucide-react'
 import { ArgilaMolePanel } from '../components/muros/ArgilaMolePanel'
 import { CortinaPanel } from '../components/muros/CortinaPanel'
+import { SoloReforcadoPanel } from '../components/muros/SoloReforcadoPanel'
 import { MuroCanvas, type MuroCanvasHandle } from '../components/muros/MuroCanvas'
 import { NumberField } from '../components/forms/NumberField'
 import { lerMurosSecoes, secaoCritica } from '../engine/muros/entrada'
@@ -78,7 +79,7 @@ export function MurosPage({ soloAvulso }: { soloAvulso?: SoloMuro } = {}) {
   const [params, setParams] = usePersistedState<ParametrosMuros>(P + 'params', PARAMETROS_PADRAO)
   const [verParams, setVerParams] = useState(false)
   const [aba, setAba] = usePersistedState<'muros' | 'argila'>(P + 'aba', 'muros')
-  const [solucao, setSolucao] = usePersistedState<'faixa' | 'cortina'>(P + 'solucao', 'faixa')
+  const [solucao, setSolucao] = usePersistedState<'faixa' | 'cortina' | 'mse'>(P + 'solucao', 'faixa')
   const [responsavel, setResponsavel] = usePersistedState(P + 'responsavel', '')
 
   const [detalhes, setDetalhes] = useState<Record<string, DetalheSerial>>({})
@@ -301,13 +302,14 @@ export function MurosPage({ soloAvulso }: { soloAvulso?: SoloMuro } = {}) {
         <h1 className="mb-1 font-sans text-xl font-bold text-text-primary">Pré-dimensionamento de contenções</h1>
         <p className="mb-6 text-sm text-text-secondary">
           Hipótese 1: faixa de colunas (CMC ou brita) com colchão de geogrelha, para solo mole. Hipótese 2: cortina de
-          estacas atirantada, para qualquer perfil de solo. Pré-dimensionamento preliminar; não é projeto executivo.
+          estacas atirantada e hipótese 3: solo reforçado com geossintético, ambas para qualquer perfil de solo. Pré-dimensionamento preliminar; não é projeto executivo.
         </p>
         <div className="mb-4 flex w-fit rounded-md border border-border p-0.5">
           {(
             [
               ['faixa', '1 · Faixa de colunas (solo mole)'],
               ['cortina', '2 · Cortina de estacas (qualquer solo)'],
+              ['mse', '3 · Solo reforçado (qualquer solo)'],
             ] as const
           ).map(([id, rotuloSol]) => (
             <button
@@ -319,7 +321,7 @@ export function MurosPage({ soloAvulso }: { soloAvulso?: SoloMuro } = {}) {
             </button>
           ))}
         </div>
-        {solucao === 'faixa' ? <ArgilaMolePanel /> : <CortinaPanel />}
+        {solucao === 'faixa' ? <ArgilaMolePanel /> : solucao === 'cortina' ? <CortinaPanel /> : <SoloReforcadoPanel />}
       </div>
     )
   }

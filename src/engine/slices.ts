@@ -37,7 +37,8 @@ function interpolateZeroCrossing(x1: number, d1: number, x2: number, d2: number)
  */
 export function findValidRange(
   circle: CircleParams,
-  profile: ReturnType<typeof buildProfile>
+  profile: ReturnType<typeof buildProfile>,
+  minWidth = MIN_ARC_WIDTH
 ): { x_left: number; x_right: number } | null {
   const xMin = circle.xc - circle.R
   const xMax = circle.xc + circle.R
@@ -88,7 +89,7 @@ export function findValidRange(
       ? interpolateZeroCrossing(xs[bestEnd], diffs[bestEnd], xs[bestEnd + 1], diffs[bestEnd + 1])
       : xs[bestEnd]
 
-  if (x_right - x_left < MIN_ARC_WIDTH) return null
+  if (x_right - x_left < minWidth) return null
   return { x_left, x_right }
 }
 
@@ -169,6 +170,7 @@ export function buildRawSlices(
     profile,
     surcharge,
     improvement: geo.improvement,
+    minArcWidth: geo.min_arc_width,
     undrained,
     ru: !undrained && (geo.ru ?? 0) > 0 ? geo.ru : undefined,
     refTerrain: effectiveNaturalTerrain(geo, mode),
@@ -199,14 +201,15 @@ export interface SliceSetup {
   n_slices: number
   surcharge?: SurchargeSpec
   improvement?: ImprovementStrip[]
+  minArcWidth?: number
   undrained?: boolean // sem poropressão (tensões totais, c = su e φ = 0)
   ru?: number         // razão de poropressão: u = ru·γh, substitui o N.A.
 }
 
 export function buildRawSlicesOnProfile(circle: CircleParams, setup: SliceSetup): BuiltSlices | null {
   const { profile, refTerrain, waterY, gammaWater, layers, fill, coverage, resolvedFillZones, n_slices } = setup
-  const { surcharge, undrained, ru, improvement } = setup
-  const range = findValidRange(circle, profile)
+  const { surcharge, undrained, ru, improvement, minArcWidth } = setup
+  const range = findValidRange(circle, profile, Math.max(MIN_ARC_WIDTH, minArcWidth ?? 0))
   if (!range) return null
 
   const { x_left, x_right } = range
