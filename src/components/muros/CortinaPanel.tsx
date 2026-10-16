@@ -9,6 +9,7 @@ import {
 import type { FaceCoverage, FillMaterial, Layer, SlopeGeometry } from '../../engine/types'
 import { usePersistedState } from '../../lib/persist'
 import { NumberField } from '../forms/NumberField'
+import { CortinaCroqui } from './CortinaCroqui'
 
 // Cortina de estacas na face vertical do aterro, atirantada a uma estaca de
 // reação, com ficha na camada resistente. O perfil, as camadas e o aterro vêm
@@ -228,6 +229,8 @@ export function CortinaPanel() {
               </div>
             </div>
           </div>
+
+          <CortinaCroqui geo={geo} layers={layers} p={p} res={res} />
 
           <div className={CARD}>
             <div className="mb-2 flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-text-secondary">
