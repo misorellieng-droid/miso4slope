@@ -140,7 +140,7 @@ export function FaixaCroqui({ geo, layers, fill, f, colchao, sem, com }: Props) 
           <Download size={14} /> Baixar SVG
         </button>
       </div>
-      <svg ref={svgRef} xmlns="http://www.w3.org/2000/svg" viewBox={`0 0 ${W} ${Ht}`} className="h-auto w-full rounded bg-white" fontFamily="'JetBrains Mono', ui-monospace, monospace">
+      <svg id="croqui-faixa" ref={svgRef} xmlns="http://www.w3.org/2000/svg" viewBox={`0 0 ${W} ${Ht}`} className="h-auto w-full rounded bg-white" fontFamily="'JetBrains Mono', ui-monospace, monospace">
         <defs>
           <pattern id="hatf" width="10" height="10" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
             <line x1="0" y1="0" x2="0" y2="10" stroke="#c9a227" strokeWidth="1" opacity="0.5" />

@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { AlertTriangle, Loader2, Play } from 'lucide-react'
+import { AlertTriangle, FileDown, Loader2, Play } from 'lucide-react'
 import {
   alertasFaixa,
   circuloAtravessaFaixa,
@@ -17,6 +17,7 @@ import type { FaceCoverage, FillMaterial, Layer, SlopeGeometry } from '../../eng
 import { usePersistedState } from '../../lib/persist'
 import { NumberField } from '../forms/NumberField'
 import { FaixaCroqui } from './FaixaCroqui'
+import { baixarRelatorioContencao, relatorioFaixa } from '../../lib/relatoriosContencao'
 
 // Pré-dimensionamento de solução sobre argila mole: faixa de colunas (CMC ou
 // brita) com colchão de geogrelha. O perfil, as camadas e o aterro vêm da
@@ -315,6 +316,21 @@ export function ArgilaMolePanel() {
       )}
 
       {com && snap && <FaixaCroqui geo={geo} layers={layers} fill={fill} f={snap.f} colchao={snap.colchao} sem={sem} com={com} />}
+
+      {com && snap && (
+        <button
+          onClick={() =>
+            baixarRelatorioContencao(
+              (projeto, responsavel) =>
+                relatorioFaixa({ geo, layers, fill, f: snap.f, colchao: snap.colchao, sem, com, varredura: tabela, projeto, responsavel }),
+              'croqui-faixa'
+            )
+          }
+          className="flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm text-text-secondary hover:text-text-primary"
+        >
+          <FileDown size={16} /> Gerar relatório (PDF)
+        </button>
+      )}
 
       {tabela && (
         <div className={CARD}>

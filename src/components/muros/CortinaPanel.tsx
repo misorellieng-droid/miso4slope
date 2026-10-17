@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { AlertTriangle, Loader2, Play, XCircle } from 'lucide-react'
+import { AlertTriangle, FileDown, Loader2, Play, XCircle } from 'lucide-react'
 import {
   analisarCortina,
   CORTINA_PADRAO,
@@ -11,6 +11,7 @@ import type { FaceCoverage, FillMaterial, Layer, SlopeGeometry } from '../../eng
 import { usePersistedState } from '../../lib/persist'
 import { NumberField } from '../forms/NumberField'
 import { CortinaCroqui } from './CortinaCroqui'
+import { baixarRelatorioContencao, relatorioCortina } from '../../lib/relatoriosContencao'
 
 // Cortina de estacas na face vertical do aterro, atirantada a uma estaca de
 // reação, com ficha numa camada de apoio qualquer (solo mole ou não). O perfil, as camadas e o aterro vêm
@@ -246,6 +247,18 @@ export function CortinaPanel() {
           </div>
 
           <CortinaCroqui geo={geo} layers={layers} fill={fill} p={p} res={res} />
+
+          <button
+            onClick={() =>
+              baixarRelatorioContencao(
+                (projeto, responsavel) => relatorioCortina({ geo, layers, fill, p, res, projeto, responsavel }),
+                'croqui-cortina'
+              )
+            }
+            className="flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm text-text-secondary hover:text-text-primary"
+          >
+            <FileDown size={16} /> Gerar relatório (PDF)
+          </button>
 
           <div className={CARD}>
             <div className="mb-2 flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-text-secondary">

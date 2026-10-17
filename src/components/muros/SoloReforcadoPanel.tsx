@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react'
-import { AlertTriangle, Loader2, Play, XCircle } from 'lucide-react'
+import { AlertTriangle, FileDown, Loader2, Play, XCircle } from 'lucide-react'
 import { analisarMSE, MSE_PADRAO, type ParamsMSE, type ResultadoMSE } from '../../engine/argilaMole/soloReforcado'
 import type { FaceCoverage, FillMaterial, Layer, SlopeGeometry } from '../../engine/types'
 import { usePersistedState } from '../../lib/persist'
 import { NumberField } from '../forms/NumberField'
 import { SoloReforcadoCroqui } from './SoloReforcadoCroqui'
+import { baixarRelatorioContencao, relatorioMSE } from '../../lib/relatoriosContencao'
 
 // Muro de solo reforçado com geossintético (face vertical), sobre qualquer
 // solo de fundação. Altura, sobrecarga, camadas e aterro vêm da Nova Análise.
@@ -149,6 +150,18 @@ export function SoloReforcadoPanel() {
           </div>
 
           <SoloReforcadoCroqui geo={geo} layers={layers} fill={fill} p={p} res={res} />
+
+          <button
+            onClick={() =>
+              baixarRelatorioContencao(
+                (projeto, responsavel) => relatorioMSE({ geo, layers, fill, p, res, projeto, responsavel }),
+                'croqui-mse'
+              )
+            }
+            className="flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm text-text-secondary hover:text-text-primary"
+          >
+            <FileDown size={16} /> Gerar relatório (PDF)
+          </button>
 
           <div className={CARD}>
             <div className="mb-2 text-xs font-medium uppercase tracking-wide text-text-secondary">Estabilidade interna por camada</div>

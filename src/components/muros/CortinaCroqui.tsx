@@ -122,6 +122,7 @@ export function CortinaCroqui({ geo, layers, fill, p, res }: Props) {
         </button>
       </div>
       <svg
+        id="croqui-cortina"
         ref={svgRef}
         xmlns="http://www.w3.org/2000/svg"
         viewBox={`0 0 ${W} ${Ht}`}
