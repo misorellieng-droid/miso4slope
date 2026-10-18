@@ -28,6 +28,8 @@ export interface SavedAnalysis {
   id: string
   nome_secao: string
   projeto_nome: string
+  revisao_id: string | null
+  revisao_nome: string | null
   created_at: string
 }
 
@@ -55,17 +57,18 @@ export async function ensureProjeto(nome: string): Promise<string> {
   return created.id
 }
 
+/** Grava a análise no projeto e na revisão ativos. */
 export async function saveAnalysis(
-  projetoNome: string,
+  projetoId: string,
+  revisaoId: string,
   nomeSecao: string,
   snapshot: AnalysisSnapshot
 ): Promise<void> {
   if (!supabase) throw new Error('Supabase não configurado — defina VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY.')
 
-  const projetoId = await ensureProjeto(projetoNome)
-
   const { error } = await supabase.from('analises').insert({
     projeto_id: projetoId,
+    revisao_id: revisaoId,
     nome_secao: nomeSecao,
     method: snapshot.method,
     mode: snapshot.mode,
@@ -81,19 +84,29 @@ export async function saveAnalysis(
   if (error) throw error
 }
 
-export async function listAnalyses(): Promise<SavedAnalysis[]> {
+/**
+ * Lista análises salvas. Com `revisaoId`, só as dessa revisão; com `projetoId`
+ * sem revisão, todas do projeto; sem nada, todas (inclui as soltas antigas).
+ */
+export async function listAnalyses(filtro: { projetoId?: string | null; revisaoId?: string | null } = {}): Promise<SavedAnalysis[]> {
   if (!supabase) return []
 
-  const { data, error } = await supabase
+  let q = supabase
     .from('analises')
-    .select('id, nome_secao, created_at, projetos(nome)')
+    .select('id, nome_secao, created_at, revisao_id, projetos(nome), revisoes(nome)')
     .order('created_at', { ascending: false })
+  if (filtro.revisaoId) q = q.eq('revisao_id', filtro.revisaoId)
+  else if (filtro.projetoId) q = q.eq('projeto_id', filtro.projetoId)
+  const { data, error } = await q
   if (error) throw error
 
-  return (data ?? []).map((row) => ({
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (data ?? []).map((row: any) => ({
     id: row.id,
     nome_secao: row.nome_secao,
-    projeto_nome: (row.projetos as unknown as { nome: string } | null)?.nome ?? '—',
+    projeto_nome: row.projetos?.nome ?? '—',
+    revisao_id: row.revisao_id ?? null,
+    revisao_nome: row.revisoes?.nome ?? null,
     created_at: row.created_at,
   }))
 }

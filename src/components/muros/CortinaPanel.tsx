@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { AlertTriangle, FileDown, Loader2, Play, XCircle } from 'lucide-react'
 import {
   analisarCortina,
@@ -34,7 +34,7 @@ function lerAnalise<T>(chave: string): T | null {
   }
 }
 
-export function CortinaPanel() {
+export function CortinaPanel({ inicial, aoMudar }: { inicial?: AnaliseCortina | null; aoMudar?: (r: AnaliseCortina | null) => void } = {}) {
   const geo = useMemo(() => lerAnalise<SlopeGeometry>('geometry'), [])
   const layers = useMemo(() => lerAnalise<Layer[]>('layers'), [])
   const fill = useMemo(() => lerAnalise<FillMaterial>('fill'), [])
@@ -47,7 +47,11 @@ export function CortinaPanel() {
   const [rodando, setRodando] = useState(false)
   const [progresso, setProgresso] = useState('')
   const [erro, setErro] = useState<string | null>(null)
-  const [res, setRes] = useState<AnaliseCortina | null>(null)
+  const [res, setRes] = useState<AnaliseCortina | null>(inicial ?? null)
+  useEffect(() => {
+    aoMudar?.(res)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [res])
 
   if (!geo || !layers || !fill) {
     return (

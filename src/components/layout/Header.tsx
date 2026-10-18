@@ -1,3 +1,4 @@
+import { SeletorProjetoRevisao } from './SeletorProjetoRevisao'
 import { Bell, Search, Settings, UserCircle } from 'lucide-react'
 
 export function Header() {
@@ -15,6 +16,7 @@ export function Header() {
         </span>
       </div>
 
+      <SeletorProjetoRevisao />
       <div className="ml-auto flex items-center gap-4 text-text-secondary">
         <button aria-label="Notificações" className="hover:text-brand">
           <Bell size={20} />

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { AlertTriangle, FileDown, Loader2, Play, XCircle } from 'lucide-react'
 import { analisarMSE, MSE_PADRAO, type ParamsMSE, type ResultadoMSE } from '../../engine/argilaMole/soloReforcado'
 import type { FaceCoverage, FillMaterial, Layer, SlopeGeometry } from '../../engine/types'
@@ -29,7 +29,7 @@ function Fs({ v, min, d = 2 }: { v: number; min: number; d?: number }) {
   return <span className={v >= min ? 'text-accent-green' : 'text-accent-red'}>{fmt(v, d)}</span>
 }
 
-export function SoloReforcadoPanel() {
+export function SoloReforcadoPanel({ inicial, aoMudar }: { inicial?: ResultadoMSE | null; aoMudar?: (r: ResultadoMSE | null) => void } = {}) {
   const geo = useMemo(() => lerAnalise<SlopeGeometry>('geometry'), [])
   const layers = useMemo(() => lerAnalise<Layer[]>('layers'), [])
   const fill = useMemo(() => lerAnalise<FillMaterial>('fill'), [])
@@ -42,7 +42,11 @@ export function SoloReforcadoPanel() {
   const [rodando, setRodando] = useState(false)
   const [progresso, setProgresso] = useState('')
   const [erro, setErro] = useState<string | null>(null)
-  const [res, setRes] = useState<ResultadoMSE | null>(null)
+  const [res, setRes] = useState<ResultadoMSE | null>(inicial ?? null)
+  useEffect(() => {
+    aoMudar?.(res)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [res])
 
   if (!geo || !layers || !fill) {
     return (

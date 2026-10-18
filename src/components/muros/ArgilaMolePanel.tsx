@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { AlertTriangle, FileDown, Loader2, Play } from 'lucide-react'
 import {
   alertasFaixa,
@@ -41,7 +41,15 @@ function lerAnalise<T>(chave: string): T | null {
   }
 }
 
-export function ArgilaMolePanel() {
+export interface EstadoFaixa {
+  sem: ResultadoFaixa | null
+  com: ResultadoFaixa | null
+  tabela: LinhaVarredura[] | null
+  snap: { f: FaixaColunas; colchao: ColchaoGeogrelha } | null
+}
+
+// inicial: resultado de um estudo salvo reaberto; aoMudar: avisa a página (para salvar o estudo)
+export function ArgilaMolePanel({ inicial, aoMudar }: { inicial?: EstadoFaixa | null; aoMudar?: (e: EstadoFaixa | null) => void } = {}) {
   const geo = useMemo(() => lerAnalise<SlopeGeometry>('geometry'), [])
   const layers = useMemo(() => lerAnalise<Layer[]>('layers'), [])
   const fill = useMemo(() => lerAnalise<FillMaterial>('fill'), [])
@@ -54,11 +62,15 @@ export function ArgilaMolePanel() {
   const [rodando, setRodando] = useState(false)
   const [progresso, setProgresso] = useState('')
   const [erro, setErro] = useState<string | null>(null)
-  const [sem, setSem] = useState<ResultadoFaixa | null>(null)
-  const [com, setCom] = useState<ResultadoFaixa | null>(null)
-  const [tabela, setTabela] = useState<LinhaVarredura[] | null>(null)
+  const [sem, setSem] = useState<ResultadoFaixa | null>(inicial?.sem ?? null)
+  const [com, setCom] = useState<ResultadoFaixa | null>(inicial?.com ?? null)
+  const [tabela, setTabela] = useState<LinhaVarredura[] | null>(inicial?.tabela ?? null)
   // entradas usadas no último cálculo (o croqui precisa bater com o resultado mostrado)
-  const [snap, setSnap] = useState<{ f: FaixaColunas; colchao: ColchaoGeogrelha } | null>(null)
+  const [snap, setSnap] = useState<{ f: FaixaColunas; colchao: ColchaoGeogrelha } | null>(inicial?.snap ?? null)
+  useEffect(() => {
+    aoMudar?.(sem || com ? { sem, com, tabela, snap } : null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sem, com, tabela, snap])
 
   const set = <K extends keyof FaixaColunas>(k: K, v: FaixaColunas[K]) => setFaixa({ ...f, [k]: v })
   const alertas = layers ? alertasFaixa(layers, f) : []

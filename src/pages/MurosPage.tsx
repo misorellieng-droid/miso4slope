@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { AlertTriangle, CheckCircle2, ChevronDown, Download, FileDown, FileUp, Loader2, Play, Square, XCircle } from 'lucide-react'
-import { ArgilaMolePanel } from '../components/muros/ArgilaMolePanel'
+import { BarraEstudos } from '../components/muros/BarraEstudos'
+import { ArgilaMolePanel, type EstadoFaixa } from '../components/muros/ArgilaMolePanel'
 import { CortinaPanel } from '../components/muros/CortinaPanel'
+import type { AnaliseCortina } from '../engine/argilaMole/cortina'
+import type { ResultadoMSE } from '../engine/argilaMole/soloReforcado'
 import { SoloReforcadoPanel } from '../components/muros/SoloReforcadoPanel'
 import { MuroCanvas, type MuroCanvasHandle } from '../components/muros/MuroCanvas'
 import { NumberField } from '../components/forms/NumberField'
@@ -17,6 +20,8 @@ import {
   type TipoMuro,
 } from '../engine/muros/tipos'
 import type { FillMaterial } from '../engine/types'
+import { aplicarDadosContencao, codificarJson, decodificarJson, montarDadosContencao } from '../lib/estudosContencao'
+import { useProjetoAtivo } from '../lib/ProjetoAtivoContext'
 import { exportarPdfMuro } from '../lib/exportMurosPdf'
 import { carregarSolo, rotuloFonte, type FonteSolo } from '../lib/murosSolo'
 import { usePersistedState } from '../lib/persist'
@@ -91,6 +96,12 @@ export function MurosPage({ soloAvulso }: { soloAvulso?: SoloMuro } = {}) {
   const [mostrarSugerida, setMostrarSugerida] = useState(true)
   const [gerandoPdf, setGerandoPdf] = useState(false)
 
+  const { projetoAtivoId, projetoAtivo, revisaoAtiva } = useProjetoAtivo()
+  // estudos de contenção: resultado atual dos painéis (para salvar) e o reaberto (para restaurar)
+  const estadoPainel = useRef<unknown>(null)
+  const [reaberto, setReaberto] = useState<{ tipo: string; valor: unknown } | null>(null)
+  const [chavePainel, setChavePainel] = useState(0)
+
   const workerRef = useRef<Worker | null>(null)
   const canvasRef = useRef<MuroCanvasHandle>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -101,6 +112,11 @@ export function MurosPage({ soloAvulso }: { soloAvulso?: SoloMuro } = {}) {
     listProjetos().then(setProjetos).catch(() => setProjetos([]))
     return () => workerRef.current?.terminate()
   }, [])
+
+  useEffect(() => {
+    if (projetoAtivoId) setProjetoId(projetoAtivoId)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projetoAtivoId])
 
   useEffect(() => {
     if (!projetoId) {
@@ -241,6 +257,74 @@ export function MurosPage({ soloAvulso }: { soloAvulso?: SoloMuro } = {}) {
     }
   }
 
+  const nomeBaseEstudo = [projetoAtivo?.nome, revisaoAtiva?.nome].filter(Boolean).join(' · ')
+
+  const coletarMuros = () => {
+    if (!arquivo) return null
+    const lista = Object.values(detalhes)
+    return {
+      dados: {
+        versao: 1,
+        nomeArquivo,
+        arquivo,
+        fontePadrao,
+        fontePorMuro,
+        aterro,
+        params: p,
+        responsavel,
+        detalhes: codificarJson(detalhes),
+      },
+      resumo: {
+        muros: arquivo.muros.length,
+        verificados: lista.length,
+        ok: lista.filter((d) => !d.semSolo && d.saida.ok).length,
+        nao_ok: lista.filter((d) => !d.semSolo && !d.saida.ok).length,
+      },
+    }
+  }
+
+  const abrirMuros = (bruto: unknown) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const d = bruto as any
+    setArquivo(d.arquivo ?? null)
+    setNomeArquivo(d.nomeArquivo ?? '')
+    setLeitura({ erros: [], avisos: [] })
+    setFontePadrao(d.fontePadrao ?? '')
+    setFontePorMuro(d.fontePorMuro ?? {})
+    if (d.aterro) setAterro(d.aterro)
+    if (d.params) setParams(d.params)
+    setResponsavel(d.responsavel ?? '')
+    const det = d.detalhes ? decodificarJson<Record<string, DetalheSerial>>(d.detalhes) : {}
+    setDetalhes(det)
+    setProgresso({})
+    setSelecionado(d.arquivo?.muros?.[0]?.id ?? null)
+    setSecaoVista(null)
+    setErro(null)
+  }
+
+  const tipoPainel = solucao === 'faixa' ? 'faixa_colunas' : solucao === 'cortina' ? 'cortina' : 'solo_reforcado'
+  const NOME_PAINEL = { faixa_colunas: 'Faixa de colunas', cortina: 'Cortina de estacas', solo_reforcado: 'Solo reforçado' } as const
+
+  const coletarPainel = () => {
+    const r = estadoPainel.current
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const x = r as any
+    const resumo =
+      tipoPainel === 'faixa_colunas'
+        ? { fs_sem: x?.sem?.FS ?? null, fs_com: x?.com?.FS ?? null }
+        : tipoPainel === 'cortina'
+          ? { T: x?.forca?.T ?? null, fs_final: x?.forca?.fsFinal ?? null, Mmax: x?.esforcos?.Mmax ?? null }
+          : { fs_sem: x?.fs0 ?? null, fs_global: x?.fsGlobal ?? null }
+    return { dados: montarDadosContencao(tipoPainel, r), resumo: codificarJson(resumo) as Record<string, unknown> }
+  }
+
+  const inicialPainel = reaberto?.tipo === tipoPainel ? reaberto.valor : null
+
+  const abrirPainel = (bruto: unknown) => {
+    setReaberto({ tipo: tipoPainel, valor: aplicarDadosContencao(tipoPainel, bruto) })
+    setChavePainel((k) => k + 1)
+  }
+
   const opcaoAvulso = soloAvulso ? <option value="x:avulso">Solo avulso: {soloAvulso.fonte}</option> : null
   const temFonte = !!projeto || !!soloAvulso
   const opcoesFonte = projeto ? (
@@ -321,7 +405,32 @@ export function MurosPage({ soloAvulso }: { soloAvulso?: SoloMuro } = {}) {
             </button>
           ))}
         </div>
-        {solucao === 'faixa' ? <ArgilaMolePanel /> : solucao === 'cortina' ? <CortinaPanel /> : <SoloReforcadoPanel />}
+        <BarraEstudos
+          key={'barra-' + tipoPainel}
+          tipo={tipoPainel}
+          nomeSugerido={`${NOME_PAINEL[tipoPainel]}${nomeBaseEstudo ? ' — ' + nomeBaseEstudo : ''}`}
+          coletar={coletarPainel}
+          aoAbrir={abrirPainel}
+        />
+        {solucao === 'faixa' ? (
+          <ArgilaMolePanel
+            key={'f' + chavePainel}
+            inicial={inicialPainel as EstadoFaixa | null}
+            aoMudar={(e) => (estadoPainel.current = e)}
+          />
+        ) : solucao === 'cortina' ? (
+          <CortinaPanel
+            key={'c' + chavePainel}
+            inicial={inicialPainel as AnaliseCortina | null}
+            aoMudar={(e) => (estadoPainel.current = e)}
+          />
+        ) : (
+          <SoloReforcadoPanel
+            key={'m' + chavePainel}
+            inicial={inicialPainel as ResultadoMSE | null}
+            aoMudar={(e) => (estadoPainel.current = e)}
+          />
+        )}
       </div>
     )
   }
@@ -329,6 +438,12 @@ export function MurosPage({ soloAvulso }: { soloAvulso?: SoloMuro } = {}) {
   return (
     <div className="mx-auto max-w-7xl">
       {seletorAba}
+      <BarraEstudos
+        tipo="muros"
+        nomeSugerido={`Muros${nomeArquivo ? ' — ' + nomeArquivo.replace(/.json$/i, '') : ''}${nomeBaseEstudo ? ' (' + nomeBaseEstudo + ')' : ''}`}
+        coletar={coletarMuros}
+        aoAbrir={abrirMuros}
+      />
       <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="font-sans text-xl font-bold text-text-primary">Verificação de Muros</h1>

@@ -4,6 +4,8 @@ import { Calculator, FileDown, FolderOpen, Loader2, Pencil, Play, Save, Trash2 }
 import { usePersistedState } from '../lib/persist'
 import { supabase } from '../lib/supabase'
 import { deleteAnalysis, listAnalyses, loadAnalysis, renameAnalysis, saveAnalysis, type SavedAnalysis } from '../lib/analysisStorage'
+import { useProjetoAtivo } from '../lib/ProjetoAtivoContext'
+import { erroMigracaoPendente } from '../lib/revisoesStorage'
 import { camadasToLayers, getSondagemCamadas } from '../lib/projetosStorage'
 import { exportReportToPdf } from '../lib/exportPdf'
 import { GeometryForm } from '../components/forms/GeometryForm'
@@ -121,6 +123,9 @@ export function AnalysisPage() {
     if (m === 'corte' && tab === 'aterro') setTab('geometria')
   }
 
+  const { projetoAtivoId, projetoAtivo, revisaoAtivaId, revisaoAtiva, garantirRevisao } = useProjetoAtivo()
+  type EscopoLista = 'revisao' | 'projeto' | 'todas'
+  const [escopoLista, setEscopoLista] = useState<EscopoLista>('revisao')
   const [saving, setSaving] = useState(false)
   const [saveMessage, setSaveMessage] = useState<string | null>(null)
   const [showLoadList, setShowLoadList] = useState(false)
@@ -179,15 +184,18 @@ export function AnalysisPage() {
   }
 
   const handleSave = async () => {
-    const projetoNome = window.prompt('Nome do projeto:')
-    if (!projetoNome) return
+    if (!projetoAtivoId) {
+      setSaveMessage('Escolha o projeto ativo no cabeçalho antes de salvar.')
+      return
+    }
     const nomeSecao = window.prompt('Nome da seção/análise:', 'Seção 1')
     if (!nomeSecao) return
 
     setSaving(true)
     setSaveMessage(null)
     try {
-      await saveAnalysis(projetoNome, nomeSecao, {
+      const { projetoId, revisaoId } = await garantirRevisao()
+      await saveAnalysis(projetoId, revisaoId, nomeSecao, {
         geometry,
         layers,
         fill,
@@ -199,19 +207,45 @@ export function AnalysisPage() {
         mode,
         result,
       })
-      setSaveMessage('Análise salva.')
+      setSaveMessage(`Análise salva em ${projetoAtivo?.nome ?? 'projeto'} · ${revisaoAtiva?.nome ?? 'Rev. 0'}.`)
     } catch (err) {
-      setSaveMessage(err instanceof Error ? `Erro ao salvar: ${err.message}` : 'Erro desconhecido ao salvar.')
+      setSaveMessage(
+        erroMigracaoPendente(err)
+          ? 'Falta rodar a migração supabase/008_revisoes_estudos.sql no Supabase.'
+          : err instanceof Error
+            ? `Erro ao salvar: ${err.message}`
+            : 'Erro desconhecido ao salvar.'
+      )
     } finally {
       setSaving(false)
     }
   }
 
-  const handleOpenLoadList = async () => {
-    setShowLoadList(true)
+  const filtroLista = (escopo: EscopoLista) =>
+    escopo === 'revisao' && revisaoAtivaId
+      ? { revisaoId: revisaoAtivaId }
+      : escopo !== 'todas' && projetoAtivoId
+        ? { projetoId: projetoAtivoId }
+        : {}
+
+  const recarregarLista = async (escopo: EscopoLista = escopoLista) => {
     setLoadingList(true)
     try {
-      setSavedAnalyses(await listAnalyses())
+      setSavedAnalyses(await listAnalyses(filtroLista(escopo)))
+    } catch (err) {
+      setSaveMessage(err instanceof Error ? `Erro ao listar: ${err.message}` : 'Erro ao listar análises salvas.')
+    } finally {
+      setLoadingList(false)
+    }
+  }
+
+  const handleOpenLoadList = async () => {
+    setShowLoadList(true)
+    const escopo: EscopoLista = projetoAtivoId ? 'revisao' : 'todas'
+    setEscopoLista(escopo)
+    setLoadingList(true)
+    try {
+      setSavedAnalyses(await listAnalyses(filtroLista(escopo)))
     } catch (err) {
       setSaveMessage(err instanceof Error ? `Erro ao listar: ${err.message}` : 'Erro ao listar análises salvas.')
     } finally {
@@ -225,7 +259,7 @@ export function AnalysisPage() {
     setBusyAnalysisId(id)
     try {
       await deleteAnalysis(id)
-      setSavedAnalyses(await listAnalyses())
+      setSavedAnalyses(await listAnalyses(filtroLista(escopoLista)))
     } catch (err) {
       setSaveMessage(err instanceof Error ? `Erro ao excluir: ${err.message}` : 'Erro ao excluir análise.')
     } finally {
@@ -240,7 +274,7 @@ export function AnalysisPage() {
     setBusyAnalysisId(id)
     try {
       await renameAnalysis(id, novoNome)
-      setSavedAnalyses(await listAnalyses())
+      setSavedAnalyses(await listAnalyses(filtroLista(escopoLista)))
     } catch (err) {
       setSaveMessage(err instanceof Error ? `Erro ao renomear: ${err.message}` : 'Erro ao renomear análise.')
     } finally {
@@ -312,7 +346,7 @@ export function AnalysisPage() {
 
   const handleExportPdf = async () => {
     if (!result) return
-    const projeto = window.prompt('Nome do projeto:', '') ?? ''
+    const projeto = window.prompt('Nome do projeto:', projetoAtivo?.nome ?? '') ?? ''
     const secao = window.prompt('Nome da seção/análise:', 'Seção 1') ?? ''
     const responsavel = window.prompt('Responsável técnico:', '') ?? ''
 
@@ -420,6 +454,27 @@ export function AnalysisPage() {
               Fechar
             </button>
           </div>
+          <div className="mb-2 flex w-fit rounded-md border border-border p-0.5">
+            {(
+              [
+                ['revisao', revisaoAtiva ? `Revisão ${revisaoAtiva.nome}` : 'Revisão ativa'],
+                ['projeto', 'Projeto todo'],
+                ['todas', 'Todas'],
+              ] as [EscopoLista, string][]
+            ).map(([id, rotulo]) => (
+              <button
+                key={id}
+                disabled={id !== 'todas' && !projetoAtivoId}
+                onClick={() => {
+                  setEscopoLista(id)
+                  recarregarLista(id)
+                }}
+                className={`rounded px-2.5 py-1 text-xs font-medium disabled:opacity-40 ${escopoLista === id ? 'bg-brand text-white' : 'text-text-secondary hover:text-text-primary'}`}
+              >
+                {rotulo}
+              </button>
+            ))}
+          </div>
           {loadingList && <div className="text-sm text-text-secondary">Carregando...</div>}
           {!loadingList && savedAnalyses.length === 0 && (
             <div className="text-sm text-text-secondary">Nenhuma análise salva ainda.</div>
@@ -434,7 +489,9 @@ export function AnalysisPage() {
                   >
                     <span>
                       <span className="text-text-primary">{a.projeto_nome}</span>
-                      <span className="text-text-secondary"> — {a.nome_secao}</span>
+                      <span className="text-text-secondary">
+                        {a.revisao_nome ? ` · ${a.revisao_nome}` : ''} — {a.nome_secao}
+                      </span>
                     </span>
                     <span className="font-mono text-xs text-text-secondary">
                       {new Date(a.created_at).toLocaleDateString('pt-BR')}
