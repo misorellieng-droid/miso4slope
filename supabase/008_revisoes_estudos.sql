@@ -1,5 +1,5 @@
 -- ------------------------------------------------------------
--- 008_revisoes_estudos.sql — miso4slope
+-- 008_revisoes_estudos.sql — miso4slope (schema "slope" do banco do hub)
 --
 -- Projeto ativo + Revisão (mesmo modelo do miso4dren):
 --   Projeto > Revisão > estudos (análises de talude e estudos de contenção/muros)
@@ -19,34 +19,34 @@
 
 do $$
 begin
-  if to_regclass('public.projetos') is null
-     or to_regclass('public.analises') is null
-     or to_regclass('public.sondagens') is null
-     or to_regclass('public.camadas') is null then
+  if to_regclass('slope.projetos') is null
+     or to_regclass('slope.analises') is null
+     or to_regclass('slope.sondagens') is null
+     or to_regclass('slope.camadas') is null then
     raise exception 'Banco errado: este script é do miso4slope e exige as tabelas projetos, analises, sondagens e camadas. Nada foi alterado.';
   end if;
 end $$;
 
 -- 1) Revisões
-create table if not exists public.revisoes (
+create table if not exists slope.revisoes (
   id          uuid primary key default gen_random_uuid(),
-  projeto_id  uuid not null references public.projetos(id) on delete cascade,
+  projeto_id  uuid not null references slope.projetos(id) on delete cascade,
   nome        text not null,
   descricao   text,
   created_at  timestamptz not null default now()
 );
-create index if not exists revisoes_projeto_idx on public.revisoes (projeto_id);
+create index if not exists revisoes_projeto_idx on slope.revisoes (projeto_id);
 
 -- 2) Análises de talude vinculadas à revisão
-alter table public.analises
-  add column if not exists revisao_id uuid references public.revisoes(id) on delete set null;
-create index if not exists analises_revisao_idx on public.analises (revisao_id);
+alter table slope.analises
+  add column if not exists revisao_id uuid references slope.revisoes(id) on delete set null;
+create index if not exists analises_revisao_idx on slope.analises (revisao_id);
 
 -- 3) Estudos de contenção / muros
-create table if not exists public.estudos_contencao (
+create table if not exists slope.estudos_contencao (
   id          uuid primary key default gen_random_uuid(),
-  projeto_id  uuid not null references public.projetos(id) on delete cascade,
-  revisao_id  uuid references public.revisoes(id) on delete cascade,
+  projeto_id  uuid not null references slope.projetos(id) on delete cascade,
+  revisao_id  uuid references slope.revisoes(id) on delete cascade,
   -- 'muros' | 'faixa_colunas' | 'cortina' | 'solo_reforcado'
   tipo        text not null check (tipo in ('muros', 'faixa_colunas', 'cortina', 'solo_reforcado')),
   nome        text not null,
@@ -55,35 +55,39 @@ create table if not exists public.estudos_contencao (
   created_at  timestamptz not null default now(),
   updated_at  timestamptz not null default now()
 );
-create index if not exists estudos_contencao_projeto_idx on public.estudos_contencao (projeto_id);
-create index if not exists estudos_contencao_revisao_idx on public.estudos_contencao (revisao_id);
+create index if not exists estudos_contencao_projeto_idx on slope.estudos_contencao (projeto_id);
+create index if not exists estudos_contencao_revisao_idx on slope.estudos_contencao (revisao_id);
 
 -- RLS: mesmo padrão pós-SSO (007) — só usuários autenticados
-alter table public.revisoes enable row level security;
-alter table public.estudos_contencao enable row level security;
+alter table slope.revisoes enable row level security;
+alter table slope.estudos_contencao enable row level security;
 
-drop policy if exists "somente autenticados" on public.revisoes;
-create policy "somente autenticados" on public.revisoes
+drop policy if exists "somente autenticados" on slope.revisoes;
+create policy "somente autenticados" on slope.revisoes
   for all to authenticated using (true) with check (true);
 
-drop policy if exists "somente autenticados" on public.estudos_contencao;
-create policy "somente autenticados" on public.estudos_contencao
+drop policy if exists "somente autenticados" on slope.estudos_contencao;
+create policy "somente autenticados" on slope.estudos_contencao
   for all to authenticated using (true) with check (true);
 
 -- 4) Migração do existente: "Rev. 0" para cada projeto com análises soltas
-insert into public.revisoes (projeto_id, nome, descricao)
+insert into slope.revisoes (projeto_id, nome, descricao)
 select distinct a.projeto_id, 'Rev. 0', 'Criada na migração das análises já salvas'
-from public.analises a
+from slope.analises a
 where a.revisao_id is null
   and a.projeto_id is not null
-  and not exists (select 1 from public.revisoes r where r.projeto_id = a.projeto_id);
+  and not exists (select 1 from slope.revisoes r where r.projeto_id = a.projeto_id);
 
-update public.analises a
+update slope.analises a
 set revisao_id = (
-  select r.id from public.revisoes r
+  select r.id from slope.revisoes r
   where r.projeto_id = a.projeto_id
   order by r.created_at asc
   limit 1
 )
 where a.revisao_id is null
   and a.projeto_id is not null;
+
+-- Permissões das tabelas novas (schema slope no banco do hub)
+grant select, insert, update, delete on slope.revisoes to authenticated;
+grant select, insert, update, delete on slope.estudos_contencao to authenticated;
