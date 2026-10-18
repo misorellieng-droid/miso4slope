@@ -518,9 +518,12 @@ export async function montarPdfContencao(r: RelatorioContencao, svg: SVGSVGEleme
       doc.text(seguro('Medidas em metros; cotas relativas ao terreno natural (0,00). Croqui gerado com os dados e resultados deste relatório.'), M, y)
       doc.setTextColor(0, 0, 0)
       y = Hp // o que vier depois começa em página nova
-    } catch {
-      paragrafo('(Não foi possível incluir o croqui neste relatório.)', 8, [150, 0, 0])
+    } catch (err) {
+      console.error('Croqui não incluído no PDF:', err)
+      paragrafo(`(Não foi possível incluir o croqui neste relatório: ${err instanceof Error ? err.message : 'erro ao converter o desenho em imagem'}.)`, 8, [150, 0, 0])
     }
+  } else {
+    paragrafo('(O croqui não foi encontrado na tela ao gerar o relatório: calcule de novo e gere o PDF com o croqui visível.)', 8, [150, 0, 0])
   }
 
   // tabelas complementares
