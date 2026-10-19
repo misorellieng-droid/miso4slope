@@ -1,5 +1,6 @@
 import { buildProfile, effectiveNaturalTerrain, groundY } from './geometry'
 import { avgSoil, profileBaseAt, resolveFillZones, splitHeightByGround } from './soil'
+import { camadaTratada, camadasEfetivas, paramsNoPonto, xLimUsuario } from './zonaFundacao'
 import type {
   AnalysisMode,
   ImprovementStrip,
@@ -11,6 +12,7 @@ import type {
   MaterialSegment,
   SlopeGeometry,
   Point,
+  ZonaFundacao,
 } from './types'
 
 const SWEEP_POINTS = 2000
@@ -111,6 +113,7 @@ export interface RawSlice {
   W_sobrecarga: number // q × largura da fatia sob a área carregada (0 fora dela)
   alpha_rad: number
   u: number
+  zona_a?: number // fração Zona A da base (só com fundação em duas zonas)
 }
 
 export interface BuiltSlices {
@@ -176,7 +179,10 @@ export function buildRawSlices(
     refTerrain: effectiveNaturalTerrain(geo, mode),
     waterY: -geo.water_table_depth,
     gammaWater: geo.gamma_water ?? 9.81,
-    layers,
+    layers: camadasEfetivas(layers, geo.zona_fundacao),
+    zonaFundacao: geo.zona_fundacao?.ativa
+      ? { zf: geo.zona_fundacao, xCrista: profile[profile.length - 2].x }
+      : undefined,
     fill,
     coverage,
     resolvedFillZones: fillZones?.length ? resolveFillZones(fillZones, geo.total_height) : undefined,
@@ -204,6 +210,8 @@ export interface SliceSetup {
   minArcWidth?: number
   undrained?: boolean // sem poropressão (tensões totais, c = su e φ = 0)
   ru?: number         // razão de poropressão: u = ru·γh, substitui o N.A.
+  // fundação em duas zonas: xCrista = x da crista no referencial do motor (pé = 0)
+  zonaFundacao?: { zf: ZonaFundacao; xCrista: number }
 }
 
 export function buildRawSlicesOnProfile(circle: CircleParams, setup: SliceSetup): BuiltSlices | null {
@@ -232,6 +240,20 @@ export function buildRawSlicesOnProfile(circle: CircleParams, setup: SliceSetup)
     const { h_aterro, h_fundacao } = splitHeightByGround(xm, y_top, y_base, refTerrain, fill != null)
     let soil_c = soil.c
     let soil_phi = soil.phi
+    let zona_a: number | undefined
+    if (setup.zonaFundacao) {
+      const { zf, xCrista } = setup.zonaFundacao
+      const alvo = camadaTratada(zf, layers)
+      const z = (refTerrain?.length ? groundY(xm, refTerrain) : 0) - y_base
+      if (alvo && z > 0 && soil.sourceKey === `layer:${alvo.indice}`) {
+        const p = paramsNoPonto(zf, alvo.layer, xCrista - xm, xLimUsuario(zf, xCrista), z)
+        soil_c = p.c
+        soil_phi = p.phi
+        zona_a = p.wA
+      } else {
+        zona_a = 0
+      }
+    }
     let extraW = 0
     for (const z of improvement ?? []) {
       if (xm < z.x_start || xm > z.x_end || y_base > z.y_top || y_base < z.y_base) continue
@@ -296,6 +318,7 @@ export function buildRawSlicesOnProfile(circle: CircleParams, setup: SliceSetup)
       W_sobrecarga,
       alpha_rad,
       u,
+      zona_a,
     })
   }
 

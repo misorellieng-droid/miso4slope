@@ -1,4 +1,5 @@
 import { momentoReforcos, saiPelaFaceContida } from './reforco'
+import { comResumo } from './zonaFundacao'
 import { buildRawSlices, MIN_VALID_SLICES, surchargeRange } from './slices'
 import type {
   AnalysisResult,
@@ -145,6 +146,7 @@ export function bishopFS(
       alpha_rad: s.alpha_rad,
       alpha_deg: (s.alpha_rad * 180) / Math.PI,
       u: s.u,
+      zona_a: s.zona_a,
       cb,
       w_u_tanphi: wUTanPhi,
       w_sin_alpha: s.W * Math.sin(s.alpha_rad),
@@ -153,7 +155,7 @@ export function bishopFS(
     }
   })
 
-  return {
+  return comResumo(geo, {
     FS,
     circle,
     slices,
@@ -171,5 +173,5 @@ export function bishopFS(
     crosses_base: built.crosses_base,
     y_min: built.y_min,
     base_y: built.base_y,
-  }
+  })
 }

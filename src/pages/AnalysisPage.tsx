@@ -16,6 +16,9 @@ import { NumberField } from '../components/forms/NumberField'
 import { SlopeCanvas, type SlopeCanvasHandle } from '../components/slope/SlopeCanvas'
 import { ResultCard } from '../components/slope/ResultCard'
 import { SlicesTable } from '../components/slope/SlicesTable'
+import { ZonaFundacaoForm } from '../components/forms/ZonaFundacaoForm'
+import { ZonaTratadaPanel } from '../components/slope/ZonaTratadaPanel'
+import { xCristaMotor } from '../engine/zonaFundacao'
 import { bishopFS } from '../engine/bishop'
 import { felleniusFS } from '../engine/fellenius'
 import { findCriticalCircle, type SearchProgress } from '../engine/search'
@@ -118,6 +121,11 @@ export function AnalysisPage() {
   const effectiveFill = mode === 'aterro' ? fill : null
   const effectiveFillZones = mode === 'aterro' ? fillZones : undefined
 
+  // a fundação em duas zonas só existe no aterro
+  const geoCalc: SlopeGeometry =
+    mode === 'corte' && geometry.zona_fundacao ? { ...geometry, zona_fundacao: undefined } : geometry
+  const zonaAtiva = mode === 'aterro' && !!geometry.zona_fundacao?.ativa
+
   const setModeSafe = (m: AnalysisMode) => {
     setMode(m)
     if (m === 'corte' && tab === 'aterro') setTab('geometria')
@@ -141,7 +149,7 @@ export function AnalysisPage() {
     setProgress(null)
     try {
       const r = await findCriticalCircle(
-        geometry,
+        geoCalc,
         layers,
         effectiveFill,
         coverage,
@@ -153,7 +161,7 @@ export function AnalysisPage() {
       setResult(r)
       setResultSource('search')
       setPartialFS(
-        computePartialFS(method, r.circle, geometry, layers, effectiveFill, coverage, effectiveFillZones, nSlices)
+        computePartialFS(method, r.circle, geoCalc, layers, effectiveFill, coverage, effectiveFillZones, nSlices)
       )
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro desconhecido na busca do círculo crítico.')
@@ -167,7 +175,7 @@ export function AnalysisPage() {
   const handleCalculateManual = () => {
     setError(null)
     const solve = SOLVERS[method]
-    const r = solve(manualCircle, geometry, layers, effectiveFill, coverage, effectiveFillZones, nSlices)
+    const r = solve(manualCircle, geoCalc, layers, effectiveFill, coverage, effectiveFillZones, nSlices)
     if (!r) {
       setError(
         'Círculo inválido para esta geometria (largura insuficiente, menos de 5 fatias válidas, ou instável numericamente — tente outro xc/yc/R).'
@@ -179,7 +187,7 @@ export function AnalysisPage() {
     setResult(r)
     setResultSource('manual')
     setPartialFS(
-      computePartialFS(method, r.circle, geometry, layers, effectiveFill, coverage, effectiveFillZones, nSlices)
+      computePartialFS(method, r.circle, geoCalc, layers, effectiveFill, coverage, effectiveFillZones, nSlices)
     )
   }
 
@@ -575,6 +583,15 @@ export function AnalysisPage() {
                   />
                 )}
                 <SoilLayerTable value={layers} onChange={setLayers} />
+                {mode === 'aterro' && (
+                  <ZonaFundacaoForm
+                    value={geometry.zona_fundacao}
+                    onChange={(zf) => setGeometry({ ...geometry, zona_fundacao: zf })}
+                    layers={layers}
+                    xPeUsuario={xCristaMotor(geometry)}
+                    analiseNaoDrenada={geometry.analysis_condition === 'undrained'}
+                  />
+                )}
               </div>
             )}
             {tab === 'aterro' && (
@@ -696,6 +713,13 @@ export function AnalysisPage() {
         <div className="space-y-4">
           <SlopeCanvas ref={canvasRef} geometry={geometry} layers={layers} result={result} mode={mode} />
           <ResultCard result={result} source={resultSource} partialFS={partialFS} />
+          {zonaAtiva && geometry.zona_fundacao && (
+            <ZonaTratadaPanel
+              entrada={{ geo: geometry, layers, fill: effectiveFill, coverage, fillZones: effectiveFillZones, nSlices, method }}
+              zona={geometry.zona_fundacao}
+              result={result}
+            />
+          )}
           <SlicesTable result={result} />
         </div>
       </div>

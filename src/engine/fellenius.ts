@@ -1,4 +1,5 @@
 import { momentoReforcos, saiPelaFaceContida } from './reforco'
+import { comResumo } from './zonaFundacao'
 import { buildRawSlices, MIN_VALID_SLICES, surchargeRange } from './slices'
 import type {
   AnalysisResult,
@@ -74,6 +75,7 @@ export function felleniusFS(
       alpha_rad: s.alpha_rad,
       alpha_deg: (s.alpha_rad * 180) / Math.PI,
       u: s.u,
+      zona_a: s.zona_a,
       cb: cL,
       w_u_tanphi: wUTanPhi,
       w_sin_alpha: s.W * Math.sin(s.alpha_rad),
@@ -87,7 +89,7 @@ export function felleniusFS(
   const FS = (slices.reduce((a, s) => a + s.numerator_term, 0) + reforco.momentoSobreR) / sumWSinAlpha
   if (!Number.isFinite(FS) || FS <= 0) return null
 
-  return {
+  return comResumo(geo, {
     FS,
     circle,
     slices,
@@ -105,5 +107,5 @@ export function felleniusFS(
     crosses_base: built.crosses_base,
     y_min: built.y_min,
     base_y: built.base_y,
-  }
+  })
 }

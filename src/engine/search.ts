@@ -1,7 +1,8 @@
 import { bishopFS } from './bishop'
 import { felleniusFS } from './fellenius'
-import { buildProfile, effectiveNaturalTerrain } from './geometry'
+import { buildProfile, effectiveNaturalTerrain, groundY } from './geometry'
 import { profileBaseAt } from './soil'
+import { camadaTratada, espessuraCamada, resumoArco } from './zonaFundacao'
 import type {
   AnalysisMode,
   AnalysisResult,
@@ -25,6 +26,12 @@ const MAX_EXPANSIONS = 4
 const N_WORST = 5
 const REFINE_ROUNDS = 4
 const REFINE_HALF_SPAN = 3 // pontos de cada lado do melhor, por dimensão, em cada rodada
+
+export interface SearchOptions {
+  nWorst?: number          // quantos círculos críticos devolver (padrão 5)
+  rapido?: boolean         // grade mais grossa e menos sementes: para varreduras de sensibilidade
+  saidaMax?: number        // m além do pé: círculos que saem mais longe são descartados
+}
 
 export interface SearchProgress {
   tested: number
@@ -79,7 +86,8 @@ export function findCriticalCircle(
   fillZones?: FillZone[],
   n_slices = 40,
   method: StabilityMethod = 'bishop',
-  onProgress?: (p: SearchProgress) => void
+  onProgress?: (p: SearchProgress) => void,
+  options?: SearchOptions
 ): Promise<AnalysisResult> {
   const solve = SOLVERS[method]
   const mode: AnalysisMode = fill == null ? 'corte' : 'aterro'
@@ -98,24 +106,35 @@ export function findCriticalCircle(
   const ybMin = baseY !== null ? baseY : -3 * H
   const ybMax = 0.5 * H
 
-  const xcMin = -Math.max(2 * H, 0.5 * D, 5)
+  // fundação em duas zonas: a grade precisa alcançar saídas bem além do pé
+  const zf = geo.zona_fundacao?.ativa ? geo.zona_fundacao : undefined
+  const alvo = zf ? camadaTratada(zf, layers) : null
+  const saidaMax = zf
+    ? options?.saidaMax ?? zf.saida_max ?? 3 * (alvo ? espessuraCamada(alvo.layer) || D : D)
+    : Infinity
+  const nWorst = options?.nWorst ?? zf?.n_criticos ?? N_WORST
+  const nDiv = options?.rapido ? 12 : 24
+  const nSeeds = options?.rapido ? 2 : nWorst
+  const rounds = options?.rapido ? 3 : REFINE_ROUNDS
+
+  const xcMin = -Math.max(2 * H, 0.5 * D, 5, zf ? 0.5 * saidaMax : 0)
   const xcMax = xCrest + Math.max(H, 0.5 * D, 5)
   const ycMin = Math.max(0.2 * H, 0.5)
   const ycMax = Math.max(3 * H, 2 * (H + D))
 
-  const nyb = 16
+  const nyb = options?.rapido ? 8 : 16
   const dom: Domain = {
     xc0: xcMin,
     yc0: ycMin,
     yb0: ybMin,
-    dxc: (xcMax - xcMin) / 24,
-    dyc: (ycMax - ycMin) / 24,
+    dxc: (xcMax - xcMin) / nDiv,
+    dyc: (ycMax - ycMin) / nDiv,
     dyb: (ybMax - ybMin) / nyb,
     nyb,
     ixMin: 0,
-    ixMax: 24,
+    ixMax: nDiv,
     iyMin: 0,
-    iyMax: 24,
+    iyMax: nDiv,
   }
 
   let tested = 0
@@ -123,7 +142,8 @@ export function findCriticalCircle(
   const trials: Trial[] = []
   const seen = new Set<string>()
   let best: { fs: number; result: AnalysisResult } | null = null
-  let totalEstimate = 25 * 25 * (nyb + 1)
+  let totalEstimate = (nDiv + 1) * (nDiv + 1) * (nyb + 1)
+  let discardedExit = 0
 
   const evaluate = (c: CircleParams): void => {
     if (c.R <= 0) return
@@ -135,6 +155,10 @@ export function findCriticalCircle(
     if (!r) return
     if (r.crosses_base) {
       discardedBelowBase++
+      return
+    }
+    if (-r.x_left > saidaMax) {
+      discardedExit++
       return
     }
     trials.push({ circle: c, FS: r.FS, x_left: r.x_left, x_right: r.x_right })
@@ -222,13 +246,13 @@ export function findCriticalCircle(
     }
 
     // 3) refinamento local: melhor + outros mecanismos distintos
-    const seeds = pickDistinct(trials, N_WORST)
-    totalEstimate = tested + seeds.length * REFINE_ROUNDS * (2 * REFINE_HALF_SPAN + 1) ** 3
+    const seeds = pickDistinct(trials, nSeeds)
+    totalEstimate = tested + seeds.length * rounds * (2 * REFINE_HALF_SPAN + 1) ** 3
     for (const seed of seeds) {
       let center = seed.circle
       let step = { x: dom.dxc, y: dom.dyc, b: dom.dyb }
       let centerFS = seed.FS
-      for (let round = 0; round < REFINE_ROUNDS; round++) {
+      for (let round = 0; round < rounds; round++) {
         step = { x: step.x / 2, y: step.y / 2, b: step.b / 2 }
         const yb0 = center.yc - center.R
         const local: CircleParams[] = []
@@ -253,18 +277,31 @@ export function findCriticalCircle(
     }
 
     // 4) resultado: crítico + piores distintos
-    const finalDistinct = pickDistinct(trials, N_WORST)
+    const finalDistinct = pickDistinct(trials, nWorst)
     const critical = finalDistinct[0]
     const result = solve(critical.circle, geo, layers, fill, coverage, fillZones, n_slices)
     if (!result) throw new Error('Nenhum círculo válido encontrado na região de busca.')
 
-    const worst: WorstCircle[] = finalDistinct.map((t, i) => ({
-      rank: i + 1,
-      circle: t.circle,
-      FS: t.FS,
-      x_left: t.x_left,
-      x_right: t.x_right,
-    }))
+    const xCristaUsuario = xCrest
+    const worst: WorstCircle[] = finalDistinct.map((t, i) => {
+      const base: WorstCircle = {
+        rank: i + 1,
+        circle: t.circle,
+        FS: t.FS,
+        x_left: t.x_left,
+        x_right: t.x_right,
+      }
+      if (!zf) return base
+      const det = solve(t.circle, geo, layers, fill, coverage, fillZones, n_slices)
+      const xFundo = Math.min(Math.max(t.circle.xc, t.x_left), t.x_right)
+      const solo = terrain?.length ? groundY(xFundo, terrain) : 0
+      return {
+        ...base,
+        prof_max: solo - (t.circle.yc - t.circle.R),
+        x_saida: xCristaUsuario - t.x_left,
+        pct_zona_a: det ? resumoArco(geo, det.slices, det.x_left).pct_zona_a : undefined,
+      }
+    })
 
     if (discardedBelowBase > 0) {
       warnings.push(
@@ -274,6 +311,12 @@ export function findCriticalCircle(
     if (baseY !== null && critical.circle.yc - critical.circle.R <= baseY + 0.25) {
       warnings.push(
         `O círculo crítico é praticamente tangente à base do perfil (cota ${baseY.toFixed(2)} m): o FS é governado pela profundidade da última camada definida, não por uma ruptura interna.`
+      )
+    }
+
+    if (discardedExit > 0) {
+      warnings.push(
+        `${discardedExit} círculo(s) saíam além do limite de ${saidaMax.toFixed(1)} m após o pé do talude e foram descartados.`
       )
     }
 

@@ -1,6 +1,7 @@
 import { forwardRef, useImperativeHandle, useMemo, useRef } from 'react'
 import { buildProfile, effectiveNaturalTerrain, groundY, layerReferenceGround, type Point } from '../../engine/geometry'
 import type { AnalysisMode, AnalysisResult, Layer, SlopeGeometry } from '../../engine/types'
+import { camadaTratada, espessuraCamada, xLimUsuario } from '../../engine/zonaFundacao'
 
 interface SlopeCanvasProps {
   geometry: SlopeGeometry
@@ -304,6 +305,22 @@ export const SlopeCanvas = forwardRef<SlopeCanvasHandle, SlopeCanvasProps>(funct
     return { q, x0: crest.x, x1: crest.x + (w != null && w > 0 ? w : 10), y: crest.y }
   }, [geometry.surcharge_q, geometry.surcharge_width, profile, crestIndex])
 
+  // Zona A (fundação tratada): do limite x_lim (referencial do usuário) até o lado da plataforma,
+  // da superfície do terreno até d_tr (ou toda a espessura da camada tratada)
+  const zonaA = useMemo(() => {
+    const zf = geometry.zona_fundacao
+    if (mode !== 'aterro' || !zf?.ativa) return null
+    const alvo = camadaTratada(zf, layers)
+    if (!alvo) return null
+    const xCrest = profile[crestIndex].x
+    const xLim = xLimUsuario(zf, xCrest)
+    const xEng = xCrest - xLim
+    const esp = espessuraCamada(alvo.layer)
+    const d = zf.d_tr == null ? esp : Math.min(zf.d_tr, esp || zf.d_tr)
+    const topo = (x: number) => (refTerrain?.length ? groundY(x, refTerrain) : 0)
+    return { xLim, xEng, d, topo, xCrest }
+  }, [geometry.zona_fundacao, mode, layers, profile, crestIndex, refTerrain])
+
   const aterroPolygon = useMemo(() => {
     const rise = profile.slice(toeIndex, crestIndex + 1)
     return [...rise, { x: rise[rise.length - 1].x, y: 0 }]
@@ -445,6 +462,35 @@ export const SlopeCanvas = forwardRef<SlopeCanvasHandle, SlopeCanvasProps>(funct
               )
             })}
 
+          {/* Zona A: fundação tratada */}
+          {zonaA && zonaA.d > 0 && (
+            <g>
+              <polygon
+                points={[
+                  { x: zonaA.xEng, y: zonaA.topo(zonaA.xEng) },
+                  { x: xMax, y: zonaA.topo(xMax) },
+                  { x: xMax, y: zonaA.topo(xMax) - zonaA.d },
+                  { x: zonaA.xEng, y: zonaA.topo(zonaA.xEng) - zonaA.d },
+                ]
+                  .map((p) => `${p.x},${p.y}`)
+                  .join(' ')}
+                fill="var(--color-accent-green)"
+                opacity={0.22}
+                stroke="var(--color-accent-green)"
+                strokeWidth={0.15}
+              />
+              <line
+                x1={zonaA.xEng}
+                y1={zonaA.topo(zonaA.xEng) + 1.5}
+                x2={zonaA.xEng}
+                y2={zonaA.topo(zonaA.xEng) - zonaA.d - 1}
+                stroke="var(--color-accent-green)"
+                strokeWidth={0.3}
+                strokeDasharray="1 0.6"
+              />
+            </g>
+          )}
+
           {/* nível d'água */}
           <line
             x1={xMin}
@@ -520,6 +566,24 @@ export const SlopeCanvas = forwardRef<SlopeCanvasHandle, SlopeCanvasProps>(funct
           )}
 
         </g>
+
+        {zonaA && (
+          <g fontSize={2.2} fontFamily="'JetBrains Mono', monospace" fill="var(--color-accent-green)">
+            <text x={zonaA.xEng - xMin + 0.6} y={yMax - zonaA.topo(zonaA.xEng) + 3.4}>
+              x_lim = {zonaA.xLim.toFixed(1)} m · Zona A
+            </text>
+            {result?.x_saida != null && (
+              <g fill={result.x_saida > zonaA.xLim + 1e-6 ? 'var(--color-accent-amber)' : 'var(--color-accent-green)'}>
+                <text x={16} y={height - 4}>
+                  Crítico sai em x = {result.x_saida.toFixed(1)} m ({result.x_saida > zonaA.xLim + 1e-6 ? 'fora' : 'dentro'} da zona tratada)
+                </text>
+                <text x={16} y={height - 1.4}>
+                  {(result.pct_zona_a ?? 0).toFixed(0)}% do arco dentro da Zona A
+                </text>
+              </g>
+            )}
+          </g>
+        )}
 
         {/* cotas — em coordenadas de tela (fora do grupo espelhado, texto não fica invertido).
             só rotula a primeira ocorrência de cada elevação (bancada), pulando o ponto

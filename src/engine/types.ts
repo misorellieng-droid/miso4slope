@@ -94,10 +94,45 @@ export interface SlopeGeometry {
   surcharge_width?: number   // extensão carregada a partir da crista (m); indefinido = toda a plataforma
   analysis_condition?: AnalysisCondition // padrão: 'drained' (comportamento original)
   ru?: number                // razão de poropressão (u/γh), só na condição drenada; > 0 substitui o N.A.
+  zona_fundacao?: ZonaFundacao // fundação em duas zonas: A (tratada, dentro do terreno) e B (natural, fora)
   natural_terrain?: Point[]  // perfil real do terreno natural (x,y relativos ao pé=0,0), substitui o
                               // trecho plano padrão e serve de referência de profundidade para camadas
                               // com depth_top/depth_base (aterro/fundação separados por essa superfície,
                               // não mais por y=0)
+}
+
+// Fundação em duas zonas. Referencial do usuário (≠ do motor): x = 0 na borda
+// da plataforma (início do talude), positivo rumo ao pé e além; o pé fica em
+// x = H·m. z positivo para baixo, a partir do terreno natural. A Zona A (tratada)
+// vale para x ≤ x_lim e z ≤ d_tr, só na camada `camada`; o resto é a Zona B
+// (natural — os valores lançados na própria camada, ou os sobrescritos abaixo).
+export type ModoZonaA = 'su' | 'precarga' | 'colunas'
+
+export interface ZonaFundacao {
+  ativa: boolean
+  camada?: number                // índice da camada de fundação tratada (padrão 0)
+  limite_modo: 'alem_pe' | 'x_abs'
+  alem_pe: number                // m além do pé do talude (padrão 0 = tratado só até o pé)
+  x_abs: number                  // posição x absoluta do limite (m), usada se limite_modo = 'x_abs'
+  d_tr: number | null            // profundidade tratada (m); null = toda a espessura da argila
+  modo: ModoZonaA
+  su_topo: number                // (modo 'su') su no topo da Zona A (kPa)
+  k: number                      // (modo 'su') gradiente su(z) = su_topo + k·z (kPa/m)
+  r: number                      // (pré-carga) razão de ganho de resistência, EMPÍRICO (padrão 0,25)
+  U: number                      // (pré-carga) grau de adensamento, 0 a 1 — HIPÓTESE
+  q_pre: number                  // (pré-carga) carga aplicada (kPa) — HIPÓTESE
+  B: number                      // (pré-carga) largura da pré-carga (m) — HIPÓTESE
+  c_comp: number                 // (colunas) coesão do solo composto (kPa)
+  phi_comp: number               // (colunas) atrito do solo composto (graus)
+  transicao: 'abrupta' | 'gradual'
+  L_trans: number                // m, largura da transição gradual (de x_lim a x_lim + L)
+  b_su_topo?: number             // Zona B: sobrescreve o c da camada no topo (kPa)
+  b_k?: number                   // Zona B: gradiente de su (kPa/m); padrão 0
+  b_phi?: number                 // Zona B: sobrescreve φ (graus)
+  b_gamma?: number               // Zona B: sobrescreve γ (kN/m³) — vale para a camada toda
+  saida_max?: number             // m além do pé até onde a busca aceita saídas (padrão 3× a espessura da camada)
+  n_criticos?: number            // quantos círculos críticos listar (padrão 5)
+  sem_tratamento?: boolean       // interno: Zona A = Zona B (cenário de comparação)
 }
 
 // Drenada (longo prazo): c', φ' e poropressão (N.A. ou ru). Não drenada (fim de
@@ -179,7 +214,8 @@ export interface SliceResult {
   alpha_rad: number
   alpha_deg: number
   u: number
-  cb: number                   // c' × comprimento da base (b no Bishop, L no Fellenius)
+  zona_a?: number               // fração (0 a 1) da base da fatia que é Zona A (só com zona_fundacao ativa)
+  cb: number                  // c' × comprimento da base (b no Bishop, L no Fellenius)
   w_u_tanphi: number           // (W - u×comprimento da base) × tan(φ')
   w_sin_alpha: number          // W × sen(α)
   m_alpha: number
@@ -219,6 +255,8 @@ export interface AnalysisResult {
   // preenchidos só pela busca automática
   worst_circles?: WorstCircle[]
   search_warnings?: string[]
+  x_saida?: number             // saída do arco em y = 0, no referencial do usuário (origem na borda da plataforma)
+  pct_zona_a?: number          // % do comprimento do arco dentro da Zona A (só com zona_fundacao ativa)
 }
 
 export interface WorstCircle {
@@ -227,6 +265,9 @@ export interface WorstCircle {
   FS: number
   x_left: number
   x_right: number
+  prof_max?: number            // profundidade máxima do arco abaixo do terreno (m)
+  x_saida?: number             // saída em y = 0, referencial do usuário
+  pct_zona_a?: number          // % do arco dentro da Zona A
 }
 
 // Camada extraída de um boletim de sondagem (SPT), em profundidade relativa
