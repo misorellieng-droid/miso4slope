@@ -1,9 +1,19 @@
 import { jsPDF } from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import {
+  alertasColuna,
   alertasFaixa,
   circuloAtravessaFaixa,
+  comTipo,
+  contextoColuna,
+  ganhoRapido,
+  NOME_TIPO,
   razaoAreas,
+  tauColuna,
+  tipoEfetivo,
+  TIPOS_COLUNA,
+  verificarColuna,
+  type TipoColuna,
   type ColchaoGeogrelha,
   type FaixaColunas,
   type LinhaVarredura,
@@ -147,16 +157,26 @@ export function relatorioFaixa(args: {
   sem: ResultadoFaixa | null
   com: ResultadoFaixa
   varredura: LinhaVarredura[] | null
+  fsTipos?: Partial<Record<TipoColuna, number>>
+  fsSemGeo?: number | null
   projeto: string
   responsavel: string
 }): RelatorioContencao {
-  const { geo, layers, fill, f, colchao, sem, com, varredura } = args
+  const { geo, layers, fill, f, colchao, sem, com, varredura, fsTipos = {} } = args
+  const tipo = tipoEfetivo(f)
+  const ctx = contextoColuna(geo, layers, fill, f)
+  const ver = verificarColuna(f, ctx.su, ctx.sigmaV)
+  const rapido = sem ? ganhoRapido(sem.result, f, ctx.su, ctx.sigmaV, ctx.gammaArgila) : null
+  const dFsBishop = sem ? (args.fsSemGeo ?? com.FS) - sem.FS : null
   const { entradas, tabela } = dadosDoEstudo(geo, layers, fill)
   const m = razaoAreas(f)
   const x0 = f.xRef - f.frente
   const atravessa = circuloAtravessaFaixa(com.result, f)
   const ok = com.FS >= 1.5 && atravessa
-  const avisos: Aviso[] = alertasFaixa(layers, f).map((a) => ({ nivel: a.nivel, texto: a.texto }))
+  const avisos: Aviso[] = [...alertasColuna(ver, ctx.su, colchao.T > 0), ...alertasFaixa(layers, f)].map((a) => ({ nivel: a.nivel, texto: a.texto }))
+  if (rapido && dFsBishop != null && Math.abs(dFsBishop) > 1e-6 && Math.abs(rapido.deltaFS - dFsBishop) / Math.abs(dFsBishop) > 0.25) {
+    avisos.push({ nivel: 'aviso', texto: `O delta FS da formula rapida (${n(rapido.deltaFS, 3)}) difere mais de 25% do delta FS do Bishop (${n(dFsBishop, 3)}). Revise a posicao da faixa.` })
+  }
   if (!atravessa) {
     avisos.unshift({
       nivel: 'erro',
@@ -166,7 +186,7 @@ export function relatorioFaixa(args: {
   if (com.FS < 1.5) avisos.unshift({ nivel: 'erro', texto: `FS com a faixa (${n(com.FS, 3)}) abaixo do exigido (1,50).` })
   return {
     titulo: 'Pré-dimensionamento: faixa de colunas',
-    subtitulo: `Colunas de ${f.tipo === 'cmc' ? 'CMC' : 'brita'} com colchão de brita${colchao.T > 0 ? ' e geogrelha' : ''}`,
+    subtitulo: `${NOME_TIPO[tipo]} com colchão de brita${colchao.T > 0 ? ' e geogrelha' : ''}`,
     projeto: args.projeto,
     responsavel: args.responsavel,
     conclusao: {
@@ -180,7 +200,7 @@ export function relatorioFaixa(args: {
       {
         titulo: 'Faixa de colunas adotada',
         linhas: [
-          ['Tipo', f.tipo === 'cmc' ? 'CMC (coluna modulada)' : 'Colunas de brita'],
+          ['Tipo', NOME_TIPO[tipo]],
           ['Posição', `x de ${n(x0, 1)} a ${n(x0 + f.largura, 1)} m (pé de referência em x = ${n(f.xRef, 1)} m)`],
           ['À frente do pé de referência', `${n(f.frente)} m`],
           ['Largura da faixa', `${n(f.largura)} m`],
@@ -188,12 +208,25 @@ export function relatorioFaixa(args: {
           ['Diâmetro', `${n(f.diametro)} m`],
           ['Malha', `${n(f.malha)} m (${f.arranjo})`],
           ['Razão de substituição m', `${n(m * 100, 1)} %`],
-          ...(f.tipo === 'brita'
+          ['n (concentração de tensões, hipótese)', n(f.n_stress, 1)],
+          ...(tipo !== 'rigida'
             ? ([
                 ['phi da brita', `${n(f.phi_col, 0)} graus`],
-                ['n (concentração de tensão)', n(f.n_stress, 1)],
+                ['sigma h0 no solo mole (hipótese)', `${n(f.sigma_h0, 0)} kPa`],
               ] as [string, string][])
-            : ([['Resistência ao cisalhamento do CMC', `${n(f.tau_col, 0)} kPa`]] as [string, string][])),
+            : ([
+                ['fck da coluna', `${n(f.fck, 0)} MPa`],
+                ['Eficiência ao cisalhamento eta (hipótese)', n(f.eta, 2)],
+                ['tau da coluna', `${n(tauColuna(f), 0)} kPa`],
+              ] as [string, string][])),
+          ...(tipo === 'gec'
+            ? ([
+                ['Rigidez J da meia (hipótese)', `${n(f.J, 0)} kN/m`],
+                ['Deformação radial admissível (hipótese)', `${n(f.eps_r, 1)} %`],
+                ['T ult da meia (hipótese)', `${n(f.T_ult, 0)} kN/m`],
+                ['FS de fluência (hipótese)', n(f.FS_fl, 1)],
+              ] as [string, string][])
+            : []),
           ['Peso específico da coluna', `${n(f.gamma_col, 1)} kN/m3`],
         ],
       },
@@ -206,6 +239,34 @@ export function relatorioFaixa(args: {
       },
     ],
     resultados: [
+      {
+        titulo: 'Verificação da coluna',
+        linhas: [
+          ['su da argila (lido) / sigma v de topo', `${n(ctx.su, 0)} kPa / ${n(ctx.sigmaV, 1)} kPa`],
+          ['Razão de substituição a', n(ver.a, 4)],
+          ['mu c / mu s', `${n(ver.muC, 2)} / ${n(ver.muS, 3)}`],
+          ...(tipo === 'rigida'
+            ? ([
+                ['sigma col = mu c x sigma v', `${n(ver.sigmaCol, 0)} kPa`],
+                ['fck/1,4 (admissível)', `${n(ver.qUlt, 0)} kPa`],
+              ] as [string, string][])
+            : ([
+                ['c comp / phi comp', `${n(ver.cComp, 1)} kPa / ${n(ver.phiComp, 1)} graus`],
+                ['sigma col = mu c x sigma v', `${n(ver.sigmaCol, 0)} kPa`],
+                ['sigma r,lim', `${n(ver.sigmaRLim ?? 0, 0)} kPa`],
+                ['q ult = Kp,c x sigma r,lim', `${n(ver.qUlt, 0)} kPa`],
+              ] as [string, string][])),
+          ['FS da coluna', n(ver.fsColuna, 2)],
+          ...(tipo === 'gec'
+            ? ([
+                ['Delta sigma r (meia)', `${n(ver.deltaSigmaR ?? 0, 0)} kPa`],
+                ['Tração na meia T / (T ult / FS fl)', `${n(ver.tracaoMeia ?? 0, 1)} kN/m / ${n(ver.tracaoAdm ?? 0, 1)} kN/m = ${n(ver.razaoTracao ?? 0, 2)}`],
+              ] as [string, string][])
+            : []),
+          ['Redução estimada do recalque', `${n(ver.reducaoRecalque * 100, 0)} %`],
+          ['Delta FS Bishop / formula rapida', `${dFsBishop != null ? n(dFsBishop, 3) : '—'} / ${rapido ? n(rapido.deltaFS, 3) : '—'}`],
+        ],
+      },
       {
         titulo: 'Estabilidade global (Bishop, busca do círculo crítico)',
         linhas: [
@@ -221,6 +282,21 @@ export function relatorioFaixa(args: {
     ],
     tabelas: [
       tabela,
+      ...(sem
+        ? [
+            {
+              titulo: 'Comparação dos 3 tipos (mesmos d, s e largura)',
+              cabecalho: ['Tipo', 'a', 'n', 'sigma col', 'q ult / fck÷1,4', 'FS coluna', 'dFS rapido', 'FS Bishop', 'Recalque'],
+              linhas: TIPOS_COLUNA.map((t) => {
+                const ft = comTipo(f, t)
+                const v = verificarColuna(ft, ctx.su, ctx.sigmaV)
+                const g = ganhoRapido(sem.result, ft, ctx.su, ctx.sigmaV, ctx.gammaArgila)
+                const fsB = fsTipos[t]
+                return [NOME_TIPO[t], n(v.a, 4), n(ft.n_stress, 1), n(v.sigmaCol, 0), n(v.qUlt, 0), n(v.fsColuna, 2), g ? n(g.deltaFS, 3) : '—', fsB != null ? n(fsB, 3) : '—', n(v.reducaoRecalque * 100, 0) + ' %']
+              }),
+            },
+          ]
+        : []),
       ...(varredura
         ? [
             {

@@ -3,6 +3,8 @@ import { Download } from 'lucide-react'
 import {
   circuloAtravessaFaixa,
   razaoAreas,
+  tauColuna,
+  tipoEfetivo,
   type ColchaoGeogrelha,
   type FaixaColunas,
   type ResultadoFaixa,
@@ -11,7 +13,7 @@ import { resolverApoio } from '../../engine/argilaMole/cortina'
 import { buildProfile } from '../../engine/geometry'
 import type { FillMaterial, Layer, SlopeGeometry } from '../../engine/types'
 
-// Croqui da faixa de colunas (CMC ou brita) com colchão de brita e geogrelha,
+// Croqui da faixa de colunas (brita, brita encamisada ou rígida) com colchão de brita e geogrelha,
 // desenhado com os dados reais do estudo e do pré-dimensionamento. Medidas em
 // m; cotas relativas ao terreno natural (0,00).
 
@@ -117,7 +119,7 @@ export function FaixaCroqui({ geo, layers, fill, f, colchao, sem, com }: Props) 
   }
 
   const atravessa = circuloAtravessaFaixa(com.result, f)
-  const tipoTxt = f.tipo === 'cmc' ? 'CMC' : 'brita'
+  const tipoTxt = { brita: 'brita', gec: 'brita encamisada (GEC)', rigida: 'coluna rígida' }[tipoEfetivo(f)]
   const boxH = 142
   const plantaY = (ytop - yFundo) * sc + 18
 
@@ -209,7 +211,7 @@ export function FaixaCroqui({ geo, layers, fill, f, colchao, sem, com }: Props) 
 
         {/* colunas */}
         {colunas.map((xcol, i) => (
-          <rect key={i} {...rect(xcol - f.diametro / 2, xcol + f.diametro / 2, yPonta, 0)} fill={f.tipo === 'cmc' ? '#4b5563' : '#9ca3af'} stroke="#374151" strokeWidth={1} />
+          <rect key={i} {...rect(xcol - f.diametro / 2, xcol + f.diametro / 2, yPonta, 0)} fill={tipoEfetivo(f) === 'rigida' ? '#4b5563' : '#9ca3af'} stroke="#374151" strokeWidth={1} />
         ))}
 
         {/* colchão de brita e geogrelha */}
@@ -302,7 +304,7 @@ export function FaixaCroqui({ geo, layers, fill, f, colchao, sem, com }: Props) 
           razão de substituição m = {fmt(m * 100, 1)}%
         </text>
         <text x={12} y={sy(yPonta * 0.8) + 21} fontSize={12} fill="#4b5563">
-          {f.tipo === 'brita' ? `φ coluna ${fmt(f.phi_col, 0)}° · n = ${fmt(f.n_stress, 1)}` : `τ coluna ${fmt(f.tau_col, 0)} kPa`}
+          {tipoEfetivo(f) !== 'rigida' ? `φ coluna ${fmt(f.phi_col, 0)}° · n = ${fmt(f.n_stress, 1)}` : `τ coluna ${fmt(tauColuna(f), 0)} kPa · η = ${fmt(f.eta, 2)} · n = ${fmt(f.n_stress, 1)}`}
         </text>
 
         {/* caixa de resultado */}
@@ -342,7 +344,7 @@ export function FaixaCroqui({ geo, layers, fill, f, colchao, sem, com }: Props) 
               const rr = Math.min(f.diametro * 14, 14)
               const passo = Math.max(f.malha * 24, rr * 2 + 4)
               const dx = f.arranjo === 'triangular' && r % 2 ? passo / 2 : 0
-              return <circle key={`${r}${c}`} cx={30 + rr + c * passo + dx} cy={44 + r * Math.min(passo, 22)} r={rr} fill={f.tipo === 'cmc' ? '#4b5563' : '#9ca3af'} stroke="#374151" />
+              return <circle key={`${r}${c}`} cx={30 + rr + c * passo + dx} cy={44 + r * Math.min(passo, 22)} r={rr} fill={tipoEfetivo(f) === 'rigida' ? '#4b5563' : '#9ca3af'} stroke="#374151" />
             })
           )}
           <text x={14} y={110} fontSize={12} fill="#1f2937">

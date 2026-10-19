@@ -1,7 +1,11 @@
 import { describe, expect, test } from 'vitest'
 import { bishopFS } from '../bishop'
 import {
+  alertasColuna,
   alertasFaixa,
+  deltaFsFormula,
+  deltaTau,
+  verificarColuna,
   circuloAtravessaFaixa,
   FAIXA_PADRAO,
   faixaParaMelhoria,
@@ -162,5 +166,66 @@ describe('posição da faixa em geometria com berma', () => {
     const r = bishopFS(local, geoBerma, camadas, fill, cov)!
     expect(circuloAtravessaFaixa(r, { ...FAIXA_PADRAO, xRef: 0 })).toBe(false)
     expect(circuloAtravessaFaixa(r, { ...FAIXA_PADRAO, xRef: pesDoTalude(geoBerma)[1] })).toBe(true)
+  })
+})
+
+describe('3 tipos de coluna: casos de conferência (tolerância 1%)', () => {
+  const sigmaV = 3.5 * 18 + 20 // 83 kPa
+  const perto = (v: number, esperado: number) => expect(Math.abs(v - esperado) / esperado).toBeLessThan(0.01)
+  const britaBase = { ...FAIXA_PADRAO, tipo: 'brita' as const, diametro: 0.8, malha: 2.5, phi_col: 40, n_stress: 5, sigma_h0: 50 }
+  const rigida = { ...FAIXA_PADRAO, tipo: 'rigida' as const, diametro: 0.4, malha: 2, n_stress: 20 }
+
+  test('caso 1: brita simples', () => {
+    const v = verificarColuna(britaBase, 15, sigmaV)
+    perto(v.a, 0.0804)
+    perto(v.muC, 3.78)
+    perto(v.muS, 0.757)
+    perto(v.cComp, 13.8)
+    perto(v.phiComp, 14.3)
+    perto(v.sigmaRLim!, 110)
+    perto(v.kp!, 4.6)
+    perto(v.qUlt, 506)
+    perto(v.sigmaCol, 314)
+    perto(v.fsColuna, 1.61)
+    expect(Math.round(v.reducaoRecalque * 100)).toBe(24)
+    const v3 = verificarColuna({ ...britaBase, n_stress: 3 }, 15, sigmaV)
+    perto(v3.muC, 2.58)
+    perto(v3.sigmaCol, 215)
+    perto(v3.fsColuna, 2.36)
+    expect(Math.round(v3.reducaoRecalque * 100)).toBe(14)
+  })
+  test('caso 2: brita encamisada', () => {
+    const v = verificarColuna({ ...britaBase, tipo: 'gec', J: 2500, eps_r: 2 }, 15, sigmaV)
+    perto(v.deltaSigmaR!, 125)
+    perto(v.sigmaRLim!, 235)
+    perto(v.qUlt, 1081)
+    perto(v.fsColuna, 3.44)
+    perto(v.tracaoMeia!, 50)
+  })
+  test('caso 3: coluna rígida', () => {
+    const v = verificarColuna(rigida, 15, sigmaV)
+    perto(v.a, 0.0314)
+    perto(v.muC, 12.53)
+    perto(v.muS, 0.626)
+    perto(v.sigmaCol, 1040)
+    expect(Math.round(v.reducaoRecalque * 100)).toBe(37)
+  })
+  test('caso 4: ganho global de conferência', () => {
+    const dt = deltaTau(britaBase, 15, 100)
+    perto(dt, 24.3)
+    expect(deltaFsFormula(dt, 12, 26.8, 26582)).toBeCloseTo(0.29, 2)
+    expect(deltaFsFormula(dt, 10, 26.8, 26582)).toBeCloseTo(0.25, 2)
+  })
+  test('malha triangular: a = π d² / (2√3 s²)', () => {
+    perto(razaoAreas({ diametro: 0.8, malha: 2.5, arranjo: 'triangular' }), (Math.PI * 0.64) / (2 * Math.sqrt(3) * 6.25))
+  })
+  test('alertas por FS da coluna', () => {
+    const v = verificarColuna(britaBase, 15, sigmaV)
+    expect(alertasColuna(v, 15, true).some((a) => a.nivel === 'aviso' && /estufamento/.test(a.texto))).toBe(true)
+    const v2 = verificarColuna({ ...britaBase, n_stress: 8 }, 15, sigmaV)
+    expect(alertasColuna(v2, 15, true).some((a) => a.nivel === 'erro' && /encamisada/.test(a.texto))).toBe(true)
+    const r = verificarColuna(rigida, 15, sigmaV)
+    expect(alertasColuna(r, 15, false).some((a) => /geogrelha/.test(a.texto))).toBe(true)
+    expect(alertasColuna(r, 15, true).some((a) => /geogrelha/.test(a.texto))).toBe(false)
   })
 })
