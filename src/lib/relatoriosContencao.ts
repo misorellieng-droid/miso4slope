@@ -19,6 +19,7 @@ import {
   type LinhaVarredura,
   type ResultadoFaixa,
 } from '../engine/argilaMole/faixaColunas'
+import { custoPorMetro, CATALOGO, type Precos, type Quantitativo } from '../engine/quantitativos'
 import { resolverApoio, type AnaliseCortina, type ParamsCortina } from '../engine/argilaMole/cortina'
 import type { ParamsMSE, ResultadoMSE } from '../engine/argilaMole/soloReforcado'
 import type { FillMaterial, Layer, SlopeGeometry } from '../engine/types'
@@ -27,6 +28,35 @@ import { svgToJpegDataUrl } from './exportPdf'
 // Relatório em PDF dos pré-dimensionamentos de contenção (faixa de colunas,
 // cortina de estacas, solo reforçado): dados do estudo, hipóteses, resultados,
 // croqui com as dimensões, verificações e limites, sequência executiva.
+
+export interface OrcamentoPdf {
+  quant: Quantitativo
+  precos: Precos
+}
+
+/** Tabela de quantitativos e custo por metro linear para o PDF (vazia se não houver orçamento). */
+export function tabelaOrcamento(o: OrcamentoPdf | undefined): { titulo: string; cabecalho: string[]; linhas: string[][] }[] {
+  if (!o) return []
+  const c = custoPorMetro(o.quant, o.precos)
+  const nf = (v: number, d = 2) => v.toFixed(d).replace('.', ',')
+  const linhas = c.linhas.map((l) => [
+    CATALOGO[l.cod].nome,
+    l.un,
+    nf(l.liquida),
+    l.sobre > 0 ? nf(l.sobre * 100, 0) + ' %' : '-',
+    nf(l.qtd),
+    l.preco != null ? nf(l.preco) : '-',
+    l.custo != null ? nf(l.custo) : '-',
+  ])
+  linhas.push(['CUSTO POR METRO LINEAR (R$/m)' + (c.total != null && !c.completo ? ' - parcial' : ''), '', '', '', '', '', c.total != null ? nf(c.total) : '-'])
+  return [
+    {
+      titulo: 'Quantitativos e custo por metro linear (pre-orcamento)',
+      cabecalho: ['Servico', 'Un', 'Liquido/m', 'Sobre', 'Qtd/m', 'Preco (R$)', 'Custo/m (R$)'],
+      linhas,
+    },
+  ]
+}
 
 export interface Aviso {
   nivel: 'aviso' | 'erro'
@@ -159,6 +189,7 @@ export function relatorioFaixa(args: {
   varredura: LinhaVarredura[] | null
   fsTipos?: Partial<Record<TipoColuna, number>>
   fsSemGeo?: number | null
+  orcamento?: OrcamentoPdf
   projeto: string
   responsavel: string
 }): RelatorioContencao {
@@ -282,6 +313,7 @@ export function relatorioFaixa(args: {
     ],
     tabelas: [
       tabela,
+      ...tabelaOrcamento(args.orcamento),
       ...(sem
         ? [
             {
@@ -321,6 +353,7 @@ export function relatorioCortina(args: {
   res: AnaliseCortina
   projeto: string
   responsavel: string
+  orcamento?: OrcamentoPdf
 }): RelatorioContencao {
   const { geo, layers, fill, p, res } = args
   const { entradas, tabela } = dadosDoEstudo(geo, layers, fill)
@@ -383,6 +416,7 @@ export function relatorioCortina(args: {
       },
     ],
     tabelas: [
+      ...tabelaOrcamento(args.orcamento),
       {
         titulo: 'Cargas por estaca',
         cabecalho: ['Carga', 'kN por estaca', 'Cota (m)'],
@@ -404,6 +438,7 @@ export function relatorioMSE(args: {
   res: ResultadoMSE
   projeto: string
   responsavel: string
+  orcamento?: OrcamentoPdf
 }): RelatorioContencao {
   const { geo, layers, fill, p, res } = args
   const { entradas, tabela } = dadosDoEstudo(geo, layers, fill)
@@ -459,6 +494,7 @@ export function relatorioMSE(args: {
       },
     ],
     tabelas: [
+      ...tabelaOrcamento(args.orcamento),
       {
         titulo: 'Estabilidade interna por camada de reforço',
         cabecalho: ['h (m)', 'sigma v (kPa)', 'Tmax (kN/m)', 'Le (m)', 'FS ruptura', 'FS arranc.', 'FS conexão'],

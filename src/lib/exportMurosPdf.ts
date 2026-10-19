@@ -3,6 +3,7 @@ import autoTable from 'jspdf-autotable'
 import type { DetalheSerial } from '../engine/muros/serial'
 import type { ParametrosMuros, TipoMuro } from '../engine/muros/tipos'
 import { svgToJpegDataUrl } from './exportPdf'
+import { tabelaOrcamento, type OrcamentoPdf } from './relatoriosContencao'
 
 // Relatório em PDF de UM muro, para anexar ao memorial: identificação,
 // critérios, desenho da seção crítica com a superfície de ruptura, FS de
@@ -47,9 +48,10 @@ export async function exportarPdfMuro(
   det: DetalheSerial,
   cab: CabecalhoMuro,
   params: ParametrosMuros,
-  svg: SVGSVGElement | null
+  svg: SVGSVGElement | null,
+  orcamento?: OrcamentoPdf & { comprimento: number }
 ): Promise<void> {
-  const doc = await montarPdfMuro(det, cab, params, svg)
+  const doc = await montarPdfMuro(det, cab, params, svg, orcamento)
   doc.save(`${cab.plato}_${det.muro.id}_verificacao.pdf`)
 }
 
@@ -58,7 +60,8 @@ export async function montarPdfMuro(
   det: DetalheSerial,
   cab: CabecalhoMuro,
   params: ParametrosMuros,
-  svg: SVGSVGElement | null
+  svg: SVGSVGElement | null,
+  orcamento?: OrcamentoPdf & { comprimento: number }
 ): Promise<jsPDF> {
   const doc = new jsPDF({ unit: 'mm', format: 'a4' })
   const W = doc.internal.pageSize.getWidth()
@@ -237,6 +240,21 @@ export async function montarPdfMuro(
           (s.fs.tombamento != null ? ` · tombamento = ${n(s.fs.tombamento)} · deslizamento = ${n(s.fs.deslizamento)}` : '') +
           (s.fs.arrancamento != null ? ` · arrancamento = ${n(s.fs.arrancamento)}` : '') +
           ` · H = ${n(s.secao.H)} m`
+      ),
+      M,
+      y
+    )
+    y += 7
+  }
+
+  // quantitativos e custo por metro linear
+  for (const t of tabelaOrcamento(orcamento)) {
+    titulo(t.titulo)
+    tabela(t.cabecalho, t.linhas)
+    doc.setFontSize(8)
+    doc.text(
+      seguro(
+        'Quantidades medias ponderadas por ' + n(orcamento?.comprimento ?? 0, 1) + ' m de muro, com sobreconsumo e premissas de pre-dimensionamento. Nao incluem drenagem, reaterro, fretes e mobilizacao.'
       ),
       M,
       y

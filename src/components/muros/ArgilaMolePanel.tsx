@@ -29,6 +29,8 @@ import type { FaceCoverage, FillMaterial, Layer, SlopeGeometry } from '../../eng
 import { usePersistedState } from '../../lib/persist'
 import { NumberField } from '../forms/NumberField'
 import { FaixaCroqui } from './FaixaCroqui'
+import { lerPrecosPremissas, OrcamentoCard } from './OrcamentoCard'
+import { quantFaixa } from '../../engine/quantitativos'
 import { baixarRelatorioContencao, relatorioFaixa } from '../../lib/relatoriosContencao'
 
 // Pré-dimensionamento de solução sobre argila mole: faixa de colunas (brita,
@@ -424,6 +426,13 @@ export function ArgilaMolePanel({ inicial, aoMudar }: { inicial?: EstadoFaixa | 
         </div>
       </div>
 
+      <OrcamentoCard
+        titulo="Quantitativos e custo por metro linear"
+        chave="faixa"
+        rotulo={`Faixa de colunas: ${NOME_TIPO[tipo]}`}
+        calcular={(prem) => ({ quant: quantFaixa(f, colchao, geo, layers, prem) })}
+      />
+
       {(sem || com) && (
         <div className={CARD}>
           <div className="mb-2 text-xs font-medium uppercase tracking-wide text-text-secondary">Resultado</div>
@@ -571,11 +580,13 @@ export function ArgilaMolePanel({ inicial, aoMudar }: { inicial?: EstadoFaixa | 
       {com && snap && (
         <button
           onClick={() =>
-            baixarRelatorioContencao(
-              (projeto, responsavel) =>
-                relatorioFaixa({ geo, layers, fill, f: fr, colchao: snap.colchao, sem, com, varredura: tabela, fsTipos, fsSemGeo, projeto, responsavel }),
-              'croqui-faixa'
-            )
+            baixarRelatorioContencao((projeto, responsavel) => {
+              const { precos, prem } = lerPrecosPremissas()
+              return relatorioFaixa({
+                geo, layers, fill, f: fr, colchao: snap.colchao, sem, com, varredura: tabela, fsTipos, fsSemGeo, projeto, responsavel,
+                orcamento: { quant: quantFaixa(fr, snap.colchao, geo, layers, prem), precos },
+              })
+            }, 'croqui-faixa')
           }
           className="flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm text-text-secondary hover:text-text-primary"
         >

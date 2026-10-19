@@ -23,6 +23,8 @@ import type { FillMaterial } from '../engine/types'
 import { aplicarDadosContencao, codificarJson, decodificarJson, montarDadosContencao } from '../lib/estudosContencao'
 import { useProjetoAtivo } from '../lib/ProjetoAtivoContext'
 import { exportarPdfMuro } from '../lib/exportMurosPdf'
+import { ComparativoCustos, lerPrecosPremissas, OrcamentoCard } from '../components/muros/OrcamentoCard'
+import { quantMuro } from '../engine/quantitativos'
 import { carregarSolo, rotuloFonte, type FonteSolo } from '../lib/murosSolo'
 import { usePersistedState } from '../lib/persist'
 import { getProjetoDetail, listProjetos, type ProjetoDetail, type ProjetoSummary } from '../lib/projetosStorage'
@@ -248,7 +250,12 @@ export function MurosPage({ soloAvulso }: { soloAvulso?: SoloMuro } = {}) {
         detSel,
         { projeto: projeto?.nome ?? '', plato: arquivo.plato, responsavel, fonteSolo: rotulo(fonteDo(detSel.muro.id)) },
         p,
-        canvasRef.current?.svg ?? null
+        canvasRef.current?.svg ?? null,
+        (() => {
+          const { precos, prem } = lerPrecosPremissas()
+          const q = quantMuro(detSel.muro.tipo, detSel.avaliacoes.map((a) => ({ s: a.secao.s, dim: a.secao.dim })), prem)
+          return q ? { quant: q.media, precos, comprimento: q.comprimento } : undefined
+        })()
       )
     } catch (e) {
       setErro(e instanceof Error ? `Erro ao gerar PDF: ${e.message}` : 'Erro ao gerar PDF.')
@@ -431,6 +438,9 @@ export function MurosPage({ soloAvulso }: { soloAvulso?: SoloMuro } = {}) {
             aoMudar={(e) => (estadoPainel.current = e)}
           />
         )}
+        <div className="mt-4">
+          <ComparativoCustos />
+        </div>
       </div>
     )
   }
@@ -937,6 +947,16 @@ export function MurosPage({ soloAvulso }: { soloAvulso?: SoloMuro } = {}) {
             </table>
           </div>
 
+          <OrcamentoCard
+            titulo={`Quantitativos e custo por metro linear · ${muroSel.id}`}
+            chave={'muro:' + muroSel.id}
+            rotulo={`Muro ${muroSel.id}: ${TIPO_LABEL[muroSel.tipo]}`}
+            calcular={(prem) => {
+              const q = quantMuro(muroSel.tipo, detSel.avaliacoes.map((a) => ({ s: a.secao.s, dim: a.secao.dim })), prem)
+              return q ? { quant: q.media, comprimento: q.comprimento, totais: q.total } : null
+            }}
+          />
+
           {detSel.saida.avisos.length > 0 && (
             <div className={CARD}>
               <div className="mb-2 flex items-center gap-1 text-xs font-medium uppercase tracking-wide text-accent-amber">
@@ -955,6 +975,10 @@ export function MurosPage({ soloAvulso }: { soloAvulso?: SoloMuro } = {}) {
       {muroSel && detSel?.semSolo && (
         <div className={`${CARD} text-sm text-accent-amber`}>{detSel.saida.avisos[0]}</div>
       )}
+
+      <div className="mt-4">
+        <ComparativoCustos />
+      </div>
 
       {!arquivo && (
         <div className={`${CARD} text-sm text-text-secondary`}>

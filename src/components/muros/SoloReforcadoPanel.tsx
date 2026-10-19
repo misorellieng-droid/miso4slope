@@ -6,6 +6,8 @@ import { usePersistedState } from '../../lib/persist'
 import { NumberField } from '../forms/NumberField'
 import { SoloReforcadoCroqui } from './SoloReforcadoCroqui'
 import { baixarRelatorioContencao, relatorioMSE } from '../../lib/relatoriosContencao'
+import { lerPrecosPremissas, OrcamentoCard } from './OrcamentoCard'
+import { quantMSE } from '../../engine/quantitativos'
 
 // Muro de solo reforçado com geossintético (face vertical), sobre qualquer
 // solo de fundação. Altura, sobrecarga, camadas e aterro vêm da Nova Análise.
@@ -155,12 +157,19 @@ export function SoloReforcadoPanel({ inicial, aoMudar }: { inicial?: ResultadoMS
 
           <SoloReforcadoCroqui geo={geo} layers={layers} fill={fill} p={p} res={res} />
 
+          <OrcamentoCard
+            titulo="Quantitativos e custo por metro linear"
+            chave="mse"
+            rotulo="Solo reforçado (MSE)"
+            calcular={(prem) => ({ quant: quantMSE(p, res, prem) })}
+          />
+
           <button
             onClick={() =>
-              baixarRelatorioContencao(
-                (projeto, responsavel) => relatorioMSE({ geo, layers, fill, p, res, projeto, responsavel }),
-                'croqui-mse'
-              )
+              baixarRelatorioContencao((projeto, responsavel) => {
+                const { precos, prem } = lerPrecosPremissas()
+                return relatorioMSE({ geo, layers, fill, p, res, projeto, responsavel, orcamento: { quant: quantMSE(p, res, prem), precos } })
+              }, 'croqui-mse')
             }
             className="flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm text-text-secondary hover:text-text-primary"
           >

@@ -11,6 +11,8 @@ import type { FaceCoverage, FillMaterial, Layer, SlopeGeometry } from '../../eng
 import { usePersistedState } from '../../lib/persist'
 import { NumberField } from '../forms/NumberField'
 import { CortinaCroqui } from './CortinaCroqui'
+import { lerPrecosPremissas, OrcamentoCard } from './OrcamentoCard'
+import { quantCortina } from '../../engine/quantitativos'
 import { baixarRelatorioContencao, relatorioCortina } from '../../lib/relatoriosContencao'
 
 // Cortina de estacas na face vertical do aterro, atirantada a uma estaca de
@@ -252,12 +254,22 @@ export function CortinaPanel({ inicial, aoMudar }: { inicial?: AnaliseCortina | 
 
           <CortinaCroqui geo={geo} layers={layers} fill={fill} p={p} res={res} />
 
+          <OrcamentoCard
+            titulo="Quantitativos e custo por metro linear"
+            chave="cortina"
+            rotulo="Cortina de estacas atirantada"
+            calcular={(prem) => ({ quant: quantCortina(p, res.esforcos, geo, layers, res.yPonta, prem) })}
+          />
+
           <button
             onClick={() =>
-              baixarRelatorioContencao(
-                (projeto, responsavel) => relatorioCortina({ geo, layers, fill, p, res, projeto, responsavel }),
-                'croqui-cortina'
-              )
+              baixarRelatorioContencao((projeto, responsavel) => {
+                const { precos, prem } = lerPrecosPremissas()
+                return relatorioCortina({
+                  geo, layers, fill, p, res, projeto, responsavel,
+                  orcamento: { quant: quantCortina(p, res.esforcos, geo, layers, res.yPonta, prem), precos },
+                })
+              }, 'croqui-cortina')
             }
             className="flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm text-text-secondary hover:text-text-primary"
           >
