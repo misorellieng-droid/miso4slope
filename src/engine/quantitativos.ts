@@ -14,6 +14,7 @@ export type Cod =
   | 'concreto_estaca'
   | 'geotextil'
   | 'brita_colchao'
+  | 'rachao'
   | 'geogrelha'
   | 'concreto'
   | 'aco'
@@ -35,6 +36,7 @@ export const CATALOGO: Record<Cod, { nome: string; un: string }> = {
   concreto_estaca: { nome: 'Concreto ou argamassa de estacas e colunas rígidas', un: 'm³' },
   geotextil: { nome: 'Geotêxtil (camisa da coluna ou filtro)', un: 'm²' },
   brita_colchao: { nome: 'Colchão de brita', un: 'm³' },
+  rachao: { nome: 'Rachão de agulhamento (plataforma sobre argila mole)', un: 'm³' },
   geogrelha: { nome: 'Geogrelha / geossintético de reforço', un: 'm²' },
   concreto: { nome: 'Concreto estrutural (muro, vigas)', un: 'm³' },
   aco: { nome: 'Aço (armadura, barras, tirantes)', un: 'kg' },
@@ -62,6 +64,7 @@ export const NOME_CLASSE: Record<ClasseSolo, string> = {
 export interface Premissas {
   sobre: Record<ClasseSolo, number> // sobreconsumo do material de furos e colunas, por solo atravessado
   sobre_calda: number // sobreconsumo da calda do grampo
+  sobre_gec: number // perda de lançamento da brita na coluna encamisada (além da expansão da meia)
   aco_estaca: number // kg/m³ mínimo das estacas
   aco_viga: number // kg/m³ das vigas
   aco_muro: number // kg/m³ do muro de flexão (se o estudo não definir)
@@ -73,6 +76,7 @@ export interface Premissas {
   rebote: number // fração de rebote do concreto projetado
   perda_concreto: number // fração de perda do concreto do muro
   lastro_esp: number // m
+  rachao_esp: number // m de rachão agulhado sob o colchão (0 = sem)
   barra_grampo: number // kg/m (Ø25 = 3,85)
   furo_grampo: number // m, diâmetro do furo
 }
@@ -80,6 +84,7 @@ export interface Premissas {
 export const PREMISSAS_PADRAO: Premissas = {
   sobre: { muito_mole: 0.3, mole: 0.2, firme: 0.1, granular: 0.05 },
   sobre_calda: 0.3,
+  sobre_gec: 0.03,
   aco_estaca: 60,
   aco_viga: 100,
   aco_muro: 80,
@@ -91,6 +96,7 @@ export const PREMISSAS_PADRAO: Premissas = {
   rebote: 0.15,
   perda_concreto: 0.05,
   lastro_esp: 0.1,
+  rachao_esp: 0.5,
   barra_grampo: 3.85,
   furo_grampo: 0.1,
 }
@@ -160,13 +166,16 @@ export function quantFaixa(f: FaixaColunas, colchao: ColchaoGeogrelha, geo: Slop
   const a = razaoAreas(f)
   const aCel = area(f.diametro) / a
   const nCol = f.largura / aCel // colunas por metro linear da faixa
-  const { fator, trechos } = sobreNasCamadas(layers, f.comprimento, prem)
+  const { fator: fatorSolo, trechos } = sobreNasCamadas(layers, f.comprimento, prem)
+  // Camisa de geotêxtil: a brita não invade a argila; o excesso vem da expansão radial da meia
+  // ((1 + εr)² − 1 do volume) mais a perda de lançamento. Sem camisa vale o solo atravessado.
+  const fator = tipo === 'gec' ? (1 + f.eps_r / 100) ** 2 - 1 + prem.sobre_gec : fatorSolo
   const vol = nCol * area(f.diametro) * f.comprimento
   const itens: ItemQtd[] = [
     item('perf_col', `${nCol.toFixed(2)} colunas/m × ${f.comprimento} m`, nCol * f.comprimento),
     tipo === 'rigida'
       ? item('concreto_estaca', `colunas rígidas Ø ${f.diametro} m`, vol, fator, 'sobreconsumo pelo solo atravessado')
-      : item('brita_col', `colunas Ø ${f.diametro} m`, vol, fator, 'sobreconsumo pelo solo atravessado'),
+      : item('brita_col', `colunas Ø ${f.diametro} m`, vol, fator, tipo === 'gec' ? 'expansão da meia + perda de lançamento' : 'sobreconsumo pelo solo atravessado'),
   ]
   if (tipo === 'gec') {
     itens.push(item('geotextil', 'camisa das colunas (π·d·L)', nCol * Math.PI * f.diametro * f.comprimento, prem.traspasse, 'inclui costura/traspasse'))
@@ -174,12 +183,33 @@ export function quantFaixa(f: FaixaColunas, colchao: ColchaoGeogrelha, geo: Slop
   const comAreaGeo = colchao.T > 0
   const lReforco = comAreaGeo ? Math.max(0, colchaoParaReforco(colchao, f, geo).x_end - (f.xRef - f.frente)) : 0
   const larguraColchao = comAreaGeo ? lReforco : f.largura
-  itens.push(item('brita_colchao', `esp. ${colchao.espessura} m × ${larguraColchao.toFixed(1)} m`, colchao.espessura * larguraColchao))
+  // Colchão sobre argila mole: a brita lançada afunda e se mistura com o solo. Com rachão agulhado a
+  // plataforma fica estabilizada e a perda cai ao nível de solo granular; sem rachão vale o solo de superfície.
+  const superficie = layers.find((l) => (l.y_top ?? 0) >= -1e-9 && (l.y_base ?? -Infinity) < -1e-9) ?? layers[0]
+  const classeSup = superficie ? classeDaCamada(superficie) : 'firme'
+  const moleSup = classeSup === 'muito_mole' || classeSup === 'mole'
+  const comRachao = prem.rachao_esp > 0 && moleSup
+  const sobreColchao = comRachao ? prem.sobre.granular : prem.sobre[classeSup]
+  if (comRachao) {
+    itens.push(item('rachao', `esp. ${prem.rachao_esp} m × ${larguraColchao.toFixed(1)} m, agulhado na argila`, prem.rachao_esp * larguraColchao, prem.sobre[classeSup], 'sobreconsumo = afundamento no solo de superfície'))
+  }
+  itens.push(
+    item('brita_colchao', `esp. ${colchao.espessura} m × ${larguraColchao.toFixed(1)} m`, colchao.espessura * larguraColchao, sobreColchao, comRachao ? 'sobre mínimo: apoiado no rachão agulhado' : 'sobreconsumo pelo solo de superfície')
+  )
   if (comAreaGeo) itens.push(item('geogrelha', `${lReforco.toFixed(1)} m de reforço`, lReforco, prem.perda_geo, 'inclui perda/emenda'))
   const notas = [
     `Colunas por metro linear = largura da faixa ÷ área da célula = ${f.largura} ÷ ${aCel.toFixed(2)} m² = ${nCol.toFixed(2)}.`,
-    'Sobreconsumo por camada: ' + trechos.map((t) => `${t.nome} ${t.metros.toFixed(1)} m (${(t.fator * 100).toFixed(0)}%)`).join('; ') + '.',
+    tipo === 'gec'
+      ? `Coluna encamisada: sobreconsumo = expansão radial da meia (εr = ${f.eps_r}% → ${(((1 + f.eps_r / 100) ** 2 - 1) * 100).toFixed(1)}% de volume) + ${(prem.sobre_gec * 100).toFixed(0)}% de perda de lançamento; não depende do solo atravessado.`
+      : 'Sobreconsumo por camada: ' + trechos.map((t) => `${t.nome} ${t.metros.toFixed(1)} m (${(t.fator * 100).toFixed(0)}%)`).join('; ') + '.',
   ]
+  notas.push(
+    comRachao
+      ? `Solo de superfície: ${superficie?.name} (${NOME_CLASSE[classeSup]}). Rachão agulhado de ${prem.rachao_esp} m sob o colchão (sobre ${(prem.sobre[classeSup] * 100).toFixed(0)}%); a brita do colchão perde só ${(prem.sobre.granular * 100).toFixed(0)}%. Se o agulhamento já está na terraplenagem, zere a espessura do rachão nas premissas.`
+      : moleSup
+        ? `Solo de superfície: ${superficie?.name} (${NOME_CLASSE[classeSup]}). Sem rachão (espessura 0): a brita do colchão perde ${(sobreColchao * 100).toFixed(0)}% por afundamento.`
+        : `Solo de superfície ${superficie?.name ?? ''} suporta o lançamento da brita sem agulhamento.`
+  )
   if (!comAreaGeo) notas.push('Sem geogrelha (T = 0): o colchão foi dimensionado só sobre a largura da faixa.')
   return { itens, notas }
 }

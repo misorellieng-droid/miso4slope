@@ -41,6 +41,11 @@ describe('quantitativos', () => {
     expect(r.itens.some((i) => i.cod === 'concreto_estaca')).toBe(true)
     expect(r.itens.some((i) => i.cod === 'brita_col')).toBe(false)
   })
+  test('GEC: sobreconsumo vem da expansão da meia, não do solo', () => {
+    const f = { ...FAIXA_PADRAO, tipo: 'gec' as const, diametro: 0.8, malha: 2.5, largura: 10, eps_r: 2 }
+    const q = quantFaixa(f, { espessura: 0.8, T: 0 }, geo, layers, P)
+    expect(get(q, 'brita_col').qtd / get(q, 'brita_col').liquida - 1).toBeCloseTo(1.02 ** 2 - 1 + 0.03, 8)
+  })
   test('muro de concreto', () => {
     const q = quantSecaoConcreto({ H: 3, base: 2.4, sapata: 0.4, parede_topo: 0.3, parede_base: 0.4, embutimento: 0.5 }, P)
     const vol = 2.4 * 0.4 + 0.35 * (3.5 - 0.4)

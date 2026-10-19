@@ -110,6 +110,7 @@ export function PremissasEditor({ prem, setPrem }: { prem: Premissas; setPrem: (
       </div>
       <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
         <Campo rotulo="Sobreconsumo da calda do grampo" valor={pct(prem.sobre_calda)} suf="%" passo={5} onChange={(v) => set('sobre_calda', v / 100)} />
+        <Campo rotulo="Perda de lançamento da brita na camisa (GEC)" valor={pct(prem.sobre_gec)} suf="%" passo={1} onChange={(v) => set('sobre_gec', v / 100)} />
         <Campo rotulo="Aço mínimo das estacas" valor={prem.aco_estaca} suf="kg/m³" passo={5} onChange={(v) => set('aco_estaca', v)} />
         <Campo rotulo="Aço das vigas" valor={prem.aco_viga} suf="kg/m³" passo={5} onChange={(v) => set('aco_viga', v)} />
         <Campo rotulo="Aço do muro de flexão" valor={prem.aco_muro} suf="kg/m³" passo={5} onChange={(v) => set('aco_muro', v)} />
@@ -120,6 +121,7 @@ export function PremissasEditor({ prem, setPrem }: { prem: Premissas; setPrem: (
         <Campo rotulo="Retorno do geossintético na face" valor={prem.dobra_mse} suf="m" onChange={(v) => set('dobra_mse', v)} />
         <Campo rotulo="Rebote do concreto projetado" valor={pct(prem.rebote)} suf="%" passo={1} onChange={(v) => set('rebote', v / 100)} />
         <Campo rotulo="Perda do concreto do muro" valor={pct(prem.perda_concreto)} suf="%" passo={1} onChange={(v) => set('perda_concreto', v / 100)} />
+        <Campo rotulo="Rachão de agulhamento sob o colchão (0 = sem)" valor={prem.rachao_esp} suf="m" onChange={(v) => set('rachao_esp', v)} />
         <Campo rotulo="Espessura do lastro" valor={prem.lastro_esp} suf="m" onChange={(v) => set('lastro_esp', v)} />
         <Campo rotulo="Barra do grampo" valor={prem.barra_grampo} suf="kg/m" onChange={(v) => set('barra_grampo', v)} />
         <Campo rotulo="Diâmetro do furo do grampo" valor={prem.furo_grampo} suf="m" onChange={(v) => set('furo_grampo', v)} />
