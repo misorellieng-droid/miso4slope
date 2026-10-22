@@ -9,6 +9,7 @@ import { SondagensPage } from './pages/SondagensPage'
 import { SSOPage } from './pages/SSOPage'
 import { NotificacoesPage } from './pages/NotificacoesPage'
 import { MurosPage } from './pages/MurosPage'
+import { CptuPage } from './modules/cptu/pages/CptuPage'
 import { RequireHubLogin } from './components/RequireHubLogin'
 
 export default function App() {
@@ -21,6 +22,7 @@ export default function App() {
         <Route path="projetos/:id" element={<ProjetoDetailPage />} />
         <Route path="analise" element={<AnalysisPage />} />
         <Route path="muros" element={<MurosPage />} />
+        <Route path="cptu" element={<CptuPage />} />
         <Route path="sondagens" element={<SondagensPage />} />
         <Route path="notificacoes" element={<NotificacoesPage />} />
         <Route path="manual" element={<PlaceholderPage title="Manual / Ajuda" />} />

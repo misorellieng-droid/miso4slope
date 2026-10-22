@@ -1,4 +1,5 @@
 import {
+  ArrowDownToLine,
   ArrowLeft,
   BarChart2,
   Bell,
@@ -30,6 +31,7 @@ const NAV_ITEMS = [
   { to: '/projetos', label: 'Projetos', icon: FolderOpen },
   { to: '/analise', label: 'Nova Análise', icon: Calculator },
   { to: '/muros', label: 'Muros', icon: BrickWall },
+  { to: '/cptu', label: 'CPTu', icon: ArrowDownToLine },
   { to: '/sondagens', label: 'Sondagens', icon: Layers },
   { to: '/notificacoes', label: 'Notificações', icon: Bell },
   { to: '/manual', label: 'Manual / Ajuda', icon: BookOpen },
