@@ -94,6 +94,31 @@ export interface LinhaCptu {
   recalqueM: number | null    // AJ (m)
 }
 
+/** Zona (camada) interpretada pelo usuário em um furo. */
+export interface ZonaCptu {
+  nome: string
+  de: number          // m
+  ate: number         // m
+  material: string
+  comentario: string
+}
+
+/** Furo completo: cabeçalho, leituras e zonas. */
+export interface FuroCptu {
+  id: string | null   // null enquanto não foi salvo
+  cabecalho: CabecalhoFuro
+  t50: number | null  // s, ensaio de dissipação (quando houver)
+  leituras: LeituraCptu[]
+  zonas: ZonaCptu[]
+}
+
+/** Chaves das melhorias (seção 9 do escopo). Todas desligadas por padrão. */
+export interface OpcoesCptu {
+  ignorarRaso: { ativo: boolean; zMin: number; acimaNA: boolean }
+  icIterativo: boolean
+  deltaSigmaVariavel: boolean
+}
+
 /** Resumo por furo (aba Resumo). */
 export interface ResumoFuro {
   nome: string

@@ -1,4 +1,11 @@
-import type { OrigemCptu, ParametrosCptu } from './tipos'
+import type { OpcoesCptu, OrigemCptu, ParametrosCptu } from './tipos'
+
+/** Melhorias desligadas: a versão 1 reproduz a planilha. */
+export const OPCOES_PADRAO: OpcoesCptu = {
+  ignorarRaso: { ativo: false, zMin: 0.5, acimaNA: false },
+  icIterativo: false,
+  deltaSigmaVariavel: false,
+}
 
 /** Valores padrão: os da planilha de referência (aba Parametros). */
 export const PARAMETROS_PADRAO: ParametrosCptu = {
