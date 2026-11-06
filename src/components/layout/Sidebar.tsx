@@ -33,6 +33,7 @@ const NAV_ITEMS = [
   { to: '/muros', label: 'Muros', icon: BrickWall },
   { to: '/cptu', label: 'CPTu', icon: ArrowDownToLine },
   { to: '/sondagens', label: 'Sondagens', icon: Layers },
+  { to: '/superficies-spt', label: 'Superfícies SPT', icon: Layers },
   { to: '/notificacoes', label: 'Notificações', icon: Bell },
   { to: '/manual', label: 'Manual / Ajuda', icon: BookOpen },
 ]

@@ -10,6 +10,7 @@ import { SSOPage } from './pages/SSOPage'
 import { NotificacoesPage } from './pages/NotificacoesPage'
 import { MurosPage } from './pages/MurosPage'
 import { CptuPage } from './modules/cptu/pages/CptuPage'
+import { SuperficiesSptPage } from './modules/sondagemCsv/pages/SuperficiesSptPage'
 import { RequireHubLogin } from './components/RequireHubLogin'
 
 export default function App() {
@@ -24,6 +25,7 @@ export default function App() {
         <Route path="muros" element={<MurosPage />} />
         <Route path="cptu" element={<CptuPage />} />
         <Route path="sondagens" element={<SondagensPage />} />
+        <Route path="superficies-spt" element={<SuperficiesSptPage />} />
         <Route path="notificacoes" element={<NotificacoesPage />} />
         <Route path="manual" element={<PlaceholderPage title="Manual / Ajuda" />} />
       </Route>
