@@ -4,6 +4,7 @@ import { parseSondagemJson } from '../../engine/sondagemJson'
 import { detectSondagemGroups } from '../../engine/sondagemDetection'
 import type { SondagemExtractionResult } from '../../engine/types'
 import { listProjetos, type ProjetoSummary } from '../../lib/projetosStorage'
+import { useProjetoAtivo } from '../../lib/ProjetoAtivoContext'
 import { extractPdfPageTexts } from '../../lib/pdfText'
 import { saveSondagem, uploadSondagemFile, type SondagemUpload } from '../../lib/sondagemStorage'
 import { NumberField } from './NumberField'
@@ -45,6 +46,7 @@ interface SondagemReportImportProps {
  */
 export function SondagemReportImport({ onSaved }: SondagemReportImportProps) {
   const [projetos, setProjetos] = useState<ProjetoSummary[]>([])
+  const { projetoAtivo } = useProjetoAtivo()
   const [projetoNome, setProjetoNome] = useState('')
   const [novoProjetoNome, setNovoProjetoNome] = useState('')
   const [file, setFile] = useState<File | null>(null)
@@ -58,6 +60,11 @@ export function SondagemReportImport({ onSaved }: SondagemReportImportProps) {
       .then(setProjetos)
       .catch(() => {})
   }, [])
+
+  // pré-seleciona o projeto ativo da barra superior (se o usuário ainda não escolheu outro)
+  useEffect(() => {
+    if (projetoAtivo && !projetoNome) setProjetoNome(projetoAtivo.nome)
+  }, [projetoAtivo, projetoNome])
 
   const effectiveProjetoNome = projetoNome === '__novo__' ? novoProjetoNome : projetoNome
 
@@ -353,6 +360,9 @@ export function SondagemReportImport({ onSaved }: SondagemReportImportProps) {
                       )}
                       {card.saved ? 'Salva no projeto' : 'Salvar no projeto'}
                     </button>
+                    {!canSave && (
+                      <span className="text-xs text-accent-amber">Escolha o projeto no topo desta página para salvar.</span>
+                    )}
                     {card.message && <span className="text-xs text-text-secondary">{card.message}</span>}
                   </div>
                 </div>
