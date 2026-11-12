@@ -1,9 +1,12 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { AlertTriangle, Check, FileJson, FileUp, Loader2, Save } from 'lucide-react'
 import { convertSondagemToLayers } from '../../engine/sondagem'
 import { parseSondagemJson } from '../../engine/sondagemJson'
 import type { Layer, SondagemExtractionResult } from '../../engine/types'
 import { supabase } from '../../lib/supabase'
+import { getSondagemCamadas, listAllSondagens, type SondagemSummary } from '../../lib/projetosStorage'
+import { useProjetoAtivo } from '../../lib/ProjetoAtivoContext'
+import type { SondagemLayerParam } from '../../engine/sondagem'
 import { saveSondagem, uploadSondagemFile, type SondagemUpload } from '../../lib/sondagemStorage'
 import { NumberField } from './NumberField'
 import { SondagemLayersEditor } from './SondagemLayersEditor'
@@ -23,7 +26,51 @@ export function SondagemImport({ toeElevation, onImport, onClose }: SondagemImpo
   const [saving, setSaving] = useState(false)
   const [saveMessage, setSaveMessage] = useState<string | null>(null)
 
+  const { projetoAtivoId } = useProjetoAtivo()
+  const [salvas, setSalvas] = useState<SondagemSummary[]>([])
+  const [carregandoSalva, setCarregandoSalva] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
+
+  useEffect(() => {
+    listAllSondagens()
+      .then((l) => setSalvas([...l].sort((a, b) => Number(b.projeto_id === projetoAtivoId) - Number(a.projeto_id === projetoAtivoId))))
+      .catch(() => {})
+  }, [projetoAtivoId])
+
+  /** Usa uma sondagem já salva (camadas com c', φ' e γ gravados) sem reimportar o JSON. */
+  const handleUsarSalva = async (id: string) => {
+    const sond = salvas.find((x) => x.id === id)
+    if (!sond) return
+    setCarregandoSalva(true)
+    setErro(null)
+    setSaveMessage(null)
+    try {
+      const rows = await getSondagemCamadas(id)
+      const layers: SondagemLayerParam[] = rows
+        .filter((c) => c.depth_top != null && c.depth_base != null)
+        .map((c) => ({
+          depth_top: c.depth_top as number,
+          depth_base: c.depth_base as number,
+          description: c.nome,
+          n_spt: c.n_spt ?? 0,
+          soil_class: (c.soil_class as 'granular' | 'coesivo') ?? 'coesivo',
+          c: c.c,
+          phi: c.phi,
+          gamma: c.gamma,
+        }))
+      setResult({
+        layers,
+        water_table_depth: sond.na_profundidade ?? undefined,
+        source_note: `Sondagem salva ${sond.nome} (${sond.projeto_nome})`,
+      })
+      setAvisos(layers.length < rows.length ? ['Algumas camadas salvas não têm profundidades e foram ignoradas.'] : [])
+      if (sond.cota_terreno != null) setCollarElevation(sond.cota_terreno)
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : 'Erro ao carregar a sondagem salva.')
+    } finally {
+      setCarregandoSalva(false)
+    }
+  }
   const [avisos, setAvisos] = useState<string[]>([])
 
   const handleJson = async (jsonFile: File | null) => {
@@ -119,6 +166,25 @@ export function SondagemImport({ toeElevation, onImport, onClose }: SondagemImpo
           Defina a cota do pé/plataforma na aba Geometria (aterro: "Cota do pé do talude"; corte: "Cota da
           plataforma de corte") para poder converter as profundidades do furo em posição dentro do talude.
         </div>
+      )}
+
+      {salvas.length > 0 && (
+        <label className="mb-3 flex flex-col gap-1">
+          <span className="text-xs text-text-secondary">Ou use uma sondagem já salva (com c', φ' e γ):</span>
+          <select
+            defaultValue=""
+            disabled={carregandoSalva}
+            onChange={(e) => e.target.value && handleUsarSalva(e.target.value)}
+            className="rounded-md border border-border bg-elevated px-2 py-1.5 text-sm text-text-primary focus:outline-none"
+          >
+            <option value="">Selecione...</option>
+            {salvas.map((x) => (
+              <option key={x.id} value={x.id}>
+                {x.nome} — {x.projeto_nome}
+              </option>
+            ))}
+          </select>
+        </label>
       )}
 
       <label className="mb-3 inline-flex cursor-pointer items-center gap-2 rounded-md bg-brand px-3 py-2 text-sm font-medium text-white">
