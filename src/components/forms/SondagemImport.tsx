@@ -1,6 +1,7 @@
 import { useState } from 'react'
-import { AlertTriangle, Check, FileUp, Loader2, Save } from 'lucide-react'
-import { convertSondagemToLayers, mockExtractSondagem } from '../../engine/sondagem'
+import { AlertTriangle, Check, FileJson, FileUp, Loader2, Save } from 'lucide-react'
+import { convertSondagemToLayers } from '../../engine/sondagem'
+import { parseSondagemJson } from '../../engine/sondagemJson'
 import type { Layer, SondagemExtractionResult } from '../../engine/types'
 import { supabase } from '../../lib/supabase'
 import { saveSondagem, uploadSondagemFile, type SondagemUpload } from '../../lib/sondagemStorage'
@@ -16,43 +17,30 @@ interface SondagemImportProps {
 export function SondagemImport({ toeElevation, onImport, onClose }: SondagemImportProps) {
   const [file, setFile] = useState<File | null>(null)
   const [collarElevation, setCollarElevation] = useState<number | undefined>(toeElevation)
-  const [extracting, setExtracting] = useState(false)
   const [result, setResult] = useState<SondagemExtractionResult | null>(null)
 
   const [uploadedFile, setUploadedFile] = useState<SondagemUpload | null>(null)
   const [saving, setSaving] = useState(false)
   const [saveMessage, setSaveMessage] = useState<string | null>(null)
 
-  const handleExtract = async () => {
-    setExtracting(true)
-    setUploadedFile(null)
+  const [erro, setErro] = useState<string | null>(null)
+  const [avisos, setAvisos] = useState<string[]>([])
+
+  const handleJson = async (jsonFile: File | null) => {
+    if (!jsonFile) return
     setSaveMessage(null)
-    try {
-      // envio do arquivo original (se selecionado) em paralelo com a
-      // extração — o envio já é real, só a leitura do conteúdo continua
-      // simulada (mock) enquanto a IA com visão computacional não é conectada
-      const [r, uploaded] = await Promise.all([
-        mockExtractSondagem(),
-        file && supabase
-          ? uploadSondagemFile(file).then(
-              (u) => ({ ok: true as const, u }),
-              (err) => ({ ok: false as const, err })
-            )
-          : Promise.resolve(null),
-      ])
-      setResult(r)
-      if (uploaded) {
-        if (uploaded.ok) {
-          setUploadedFile(uploaded.u)
-        } else {
-          setUploadedFile(null)
-          setSaveMessage(
-            `Não foi possível enviar o arquivo (${uploaded.err instanceof Error ? uploaded.err.message : 'erro desconhecido'}) — verifique se o bucket "sondagens" foi criado no Supabase.`
-          )
-        }
-      }
-    } finally {
-      setExtracting(false)
+    const { furos, erros } = parseSondagemJson(await jsonFile.text())
+    if (erros.length) {
+      setErro(erros.join(' '))
+      return
+    }
+    setErro(null)
+    const f = furos[0]
+    setResult(f.extraction)
+    setAvisos([...(furos.length > 1 ? [`O JSON tem ${furos.length} furos; carregado só "${f.identifier}". Use a página Sondagens para importar todos.`] : []), ...f.avisos])
+    if (f.cotaBoca != null) setCollarElevation(f.cotaBoca)
+    if (file && supabase) {
+      uploadSondagemFile(file).then(setUploadedFile, () => setUploadedFile(null))
     }
   }
 
@@ -96,9 +84,7 @@ export function SondagemImport({ toeElevation, onImport, onClose }: SondagemImpo
       <div className="mb-3 flex items-start gap-2 rounded-md border border-accent-amber/40 bg-accent-amber/10 p-2 text-xs text-accent-amber">
         <AlertTriangle size={14} className="mt-0.5 shrink-0" />
         <span>
-          A leitura do conteúdo ainda é simulada (mock) — a extração por IA com visão computacional ainda não está
-          conectada, os dados abaixo são de exemplo; sempre confira contra o boletim antes de importar. O envio do
-          arquivo em si já é real: ao salvar a sondagem, o arquivo original fica guardado para conferência futura.
+          O app não lê a tabela do PDF: gere o JSON miso-spt no Claude Chat (com c', φ' e γ discutidos/revisados lá) e importe abaixo. Confira contra o boletim antes de importar. O arquivo original do PDF, se escolhido, fica guardado ao salvar a sondagem.
         </span>
       </div>
 
@@ -135,14 +121,23 @@ export function SondagemImport({ toeElevation, onImport, onClose }: SondagemImpo
         </div>
       )}
 
-      <button
-        onClick={handleExtract}
-        disabled={extracting}
-        className="mb-3 flex items-center gap-2 rounded-md bg-brand px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
-      >
-        {extracting && <Loader2 size={14} className="animate-spin" />}
-        {extracting ? 'Extraindo...' : 'Extrair dados do boletim'}
-      </button>
+      <label className="mb-3 inline-flex cursor-pointer items-center gap-2 rounded-md bg-brand px-3 py-2 text-sm font-medium text-white">
+        <FileJson size={14} />
+        Importar JSON (miso-spt)
+        <input
+          type="file"
+          accept="application/json,.json"
+          className="hidden"
+          onChange={(e) => {
+            handleJson(e.target.files?.[0] ?? null)
+            e.target.value = ''
+          }}
+        />
+      </label>
+      {erro && <div className="mb-3 text-xs text-accent-red">{erro}</div>}
+      {avisos.map((a, i) => (
+        <div key={i} className="mb-1 text-xs text-accent-amber">{a}</div>
+      ))}
 
       {result && (
         <div className="space-y-3">

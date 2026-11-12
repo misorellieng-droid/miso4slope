@@ -1,6 +1,6 @@
 import { supabase } from './supabase'
 import { ensureProjeto } from './analysisStorage'
-import { estimateFromSPT } from '../engine/spt'
+import { parametrosDaCamada, type SondagemLayerParam } from '../engine/sondagem'
 import type { SondagemExtractionResult } from '../engine/types'
 
 export interface SondagemUpload {
@@ -68,7 +68,7 @@ export async function saveSondagem(
   if (error) throw error
 
   const camadas = extraction.layers.map((l, i) => {
-    const est = estimateFromSPT(l.n_spt, l.soil_class)
+    const est = parametrosDaCamada(l as SondagemLayerParam)
     return {
       sondagem_id: sondagem.id,
       nome: l.description,

@@ -2,6 +2,18 @@ import type { Layer, SoilClass, SondagemExtractionResult, SondagemLayer } from '
 import { estimateFromSPT } from './spt'
 
 /**
+ * Camada de sondagem com parâmetros opcionais (c', φ', γ) definidos fora do app
+ * (JSON miso-spt, revisado no Claude Chat). Quando presentes, prevalecem sobre a
+ * correlação automática com N_SPT.
+ */
+export type SondagemLayerParam = SondagemLayer & { c?: number; phi?: number; gamma?: number }
+
+export function parametrosDaCamada(l: SondagemLayerParam): { c: number; phi: number; gamma: number } {
+  const est = estimateFromSPT(l.n_spt, l.soil_class)
+  return { c: l.c ?? est.c, phi: l.phi ?? est.phi, gamma: l.gamma ?? est.gamma }
+}
+
+/**
  * Infere se a camada é predominantemente granular ou coesiva a partir da
  * descrição textual do boletim, seguindo a convenção usual de boletins
  * brasileiros: o substantivo principal ("argila", "areia", "silte") indica
@@ -62,7 +74,7 @@ export function convertSondagemToLayers(
   toeElevation: number
 ): Layer[] {
   return sondagemLayers.map((sl) => {
-    const est = estimateFromSPT(sl.n_spt, sl.soil_class)
+    const est = parametrosDaCamada(sl as SondagemLayerParam)
     return {
       name: sl.description,
       y_top: collarElevation - sl.depth_top - toeElevation,

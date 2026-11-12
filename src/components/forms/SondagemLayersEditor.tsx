@@ -1,11 +1,11 @@
-import { classifySoilFromDescription } from '../../engine/sondagem'
-import type { SondagemLayer, SoilClass } from '../../engine/types'
+import { classifySoilFromDescription, parametrosDaCamada, type SondagemLayerParam } from '../../engine/sondagem'
+import type { SoilClass } from '../../engine/types'
 
 const SOIL_CLASS_LABELS: Record<SoilClass, string> = { granular: 'Granular', coesivo: 'Coesivo' }
 
 interface SondagemLayersEditorProps {
-  layers: SondagemLayer[]
-  onChange: (layers: SondagemLayer[]) => void
+  layers: SondagemLayerParam[]
+  onChange: (layers: SondagemLayerParam[]) => void
 }
 
 /**
@@ -16,7 +16,7 @@ interface SondagemLayersEditorProps {
  * duplicar a mesma tabela nos dois fluxos.
  */
 export function SondagemLayersEditor({ layers, onChange }: SondagemLayersEditorProps) {
-  const updateLayer = (index: number, patch: Partial<SondagemLayer>) => {
+  const updateLayer = (index: number, patch: Partial<SondagemLayerParam>) => {
     onChange(layers.map((l, i) => (i === index ? { ...l, ...patch } : l)))
   }
 
@@ -30,6 +30,10 @@ export function SondagemLayersEditor({ layers, onChange }: SondagemLayersEditorP
             <th className="pb-1">Descrição</th>
             <th className="pb-1">N_SPT</th>
             <th className="pb-1">Tipo</th>
+            <th className="pb-1">c' (kPa)</th>
+            <th className="pb-1">φ' (°)</th>
+            <th className="pb-1">γ (kN/m³)</th>
+            <th />
           </tr>
         </thead>
         <tbody className="font-mono">
@@ -87,10 +91,37 @@ export function SondagemLayersEditor({ layers, onChange }: SondagemLayersEditorP
                   ))}
                 </select>
               </td>
+              {(['c', 'phi', 'gamma'] as const).map((k) => (
+                <td key={k} className="py-1 pl-2">
+                  <input
+                    type="number"
+                    step="0.1"
+                    value={layer[k] ?? ''}
+                    placeholder={String(Math.round(parametrosDaCamada({ ...layer, c: undefined, phi: undefined, gamma: undefined })[k] * 10) / 10)}
+                    onChange={(e) => updateLayer(i, { [k]: Number.isNaN(e.target.valueAsNumber) ? undefined : e.target.valueAsNumber })}
+                    title="Vazio = estimativa automática por N_SPT (valor em cinza)"
+                    className="w-16 rounded bg-elevated px-2 py-1 text-text-primary placeholder:text-text-secondary/50 focus:outline-none"
+                  />
+                </td>
+              ))}
+              <td className="py-1 pl-2">
+                <button aria-label="Remover camada" onClick={() => onChange(layers.filter((_, j) => j !== i))} className="text-text-secondary hover:text-accent-red">×</button>
+              </td>
             </tr>
           ))}
         </tbody>
       </table>
+      <button
+        onClick={() =>
+          onChange([
+            ...layers,
+            { depth_top: layers.length ? layers[layers.length - 1].depth_base : 0, depth_base: layers.length ? layers[layers.length - 1].depth_base + 1 : 1, description: '', n_spt: 0, soil_class: 'coesivo' },
+          ])
+        }
+        className="mt-2 text-xs text-brand hover:underline"
+      >
+        + Adicionar camada
+      </button>
     </div>
   )
 }

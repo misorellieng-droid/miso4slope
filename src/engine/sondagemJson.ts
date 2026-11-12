@@ -1,4 +1,4 @@
-import { classifySoilFromDescription } from './sondagem'
+import { classifySoilFromDescription, type SondagemLayerParam } from './sondagem'
 import type { SoilClass, SondagemExtractionResult } from './types'
 
 /**
@@ -6,9 +6,9 @@ import type { SoilClass, SondagemExtractionResult } from './types'
  * Claude Chat a partir do PDF do laudo). Esquema e prompt de extração:
  * miso-sondagem-civil3d-plugin/docs/spt-json-v1.md
  *
- * O JSON traz só dado medido (camadas, N_SPT por metro, N.A., cota); c'/φ'/γ
- * continuam sendo calculados pelo app (estimateFromSPT) ao salvar — os
- * "parametros" do JSON são ignorados de propósito (estimativa não revisada).
+ * Camadas, N_SPT, N.A. e cota vêm do laudo; c'/φ'/γ vêm do campo "parametros"
+ * (camada_idx = posição 0-based em "camadas"), definidos/revisados no Claude Chat.
+ * Camada sem parâmetros no JSON cai na correlação automática do app (estimateFromSPT).
  */
 export interface SondagemJsonFuro {
   identifier: string
@@ -43,6 +43,7 @@ export function parseSondagemJson(texto: string): { furos: SondagemJsonFuro[]; e
   }
 
   const furos: SondagemJsonFuro[] = []
+  const pos = (v: unknown) => num(v)
   raw.furos.forEach((f, i) => {
     if (!isRec(f)) return
     const id = typeof f.id === 'string' && f.id.trim() ? f.id.trim() : `Sondagem ${i + 1}`
@@ -52,7 +53,12 @@ export function parseSondagemJson(texto: string): { furos: SondagemJsonFuro[]; e
       .map((s) => ({ prof: num(s.prof_m), n: num(s.n_spt) }))
       .filter((s): s is { prof: number; n: number } => s.prof !== null && s.n !== null)
 
-    const layers = (Array.isArray(f.camadas) ? f.camadas : []).filter(isRec).flatMap((c, j) => {
+    const params = new Map<number, Rec>()
+    for (const pr of Array.isArray(f.parametros) ? f.parametros : []) {
+      if (isRec(pr) && pos(pr.camada_idx) !== null) params.set(pos(pr.camada_idx)!, pr)
+    }
+    const layers = (Array.isArray(f.camadas) ? f.camadas : []).flatMap((c, j) => {
+      if (!isRec(c)) return []
       const topo = num(c.topo_m)
       const base = num(c.base_m)
       const descricao = typeof c.descricao === 'string' ? c.descricao : ''
@@ -68,7 +74,15 @@ export function parseSondagemJson(texto: string): { furos: SondagemJsonFuro[]; e
       }
       const soil_class: SoilClass =
         c.tipo === 'granular' || c.tipo === 'coesivo' ? c.tipo : classifySoilFromDescription(descricao)
-      return [{ depth_top: topo, depth_base: base, description: descricao, n_spt: n, soil_class }]
+      const pr = params.get(j)
+      const camada: SondagemLayerParam = { depth_top: topo, depth_base: base, description: descricao, n_spt: n, soil_class }
+      if (pr) {
+        const c0 = num(pr.c_kpa), ph = num(pr.phi_graus), ga = num(pr.gamma_knm3)
+        if (c0 !== null) camada.c = c0
+        if (ph !== null) camada.phi = ph
+        if (ga !== null) camada.gamma = ga
+      }
+      return [camada]
     })
     if (layers.length === 0) avisos.push('Nenhuma camada válida.')
 

@@ -43,3 +43,18 @@ describe('parseSondagemJson', () => {
     expect(r.furos[0].avisos.length).toBe(1)
   })
 })
+
+describe('parâmetros do JSON', () => {
+  test('c, φ e γ do JSON prevalecem sobre a correlação; sem eles usa estimativa', async () => {
+    const { parametrosDaCamada } = await import('../sondagem')
+    const r = parseSondagemJson(JSON.stringify({
+      schema: 'miso-spt/1',
+      furos: [{ id: 'A',
+        camadas: [{ topo_m: 0, base_m: 1, descricao: 'argila', n_spt: 4 }, { topo_m: 1, base_m: 2, descricao: 'argila', n_spt: 4 }],
+        parametros: [{ camada_idx: 0, c_kpa: 12, phi_graus: 23, gamma_knm3: 17 }] }],
+    }))
+    const [l0, l1] = r.furos[0].extraction.layers as never[]
+    expect(parametrosDaCamada(l0)).toEqual({ c: 12, phi: 23, gamma: 17 })
+    expect(parametrosDaCamada(l1).gamma).toBe(15) // coesivo, N=4 → mole
+  })
+})
