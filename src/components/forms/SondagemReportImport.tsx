@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { AlertTriangle, Check, FileUp, Loader2, Plus, Save, Trash2 } from 'lucide-react'
-import { mockExtractSondagem } from '../../engine/sondagem'
+import { AlertTriangle, Check, FileJson, FileUp, Loader2, Plus, Save, Trash2 } from 'lucide-react'
+import { parseSondagemJson } from '../../engine/sondagemJson'
 import { detectSondagemGroups } from '../../engine/sondagemDetection'
 import type { SondagemExtractionResult } from '../../engine/types'
 import { listProjetos, type ProjetoSummary } from '../../lib/projetosStorage'
@@ -22,6 +22,11 @@ interface Card {
   saved: boolean
   message: string | null
 }
+
+const extracaoVazia = (): SondagemExtractionResult => ({
+  layers: [],
+  source_note: 'Sem dados: importe o JSON miso-spt ou preencha as camadas manualmente.',
+})
 
 interface SondagemReportImportProps {
   onSaved?: () => void
@@ -89,15 +94,8 @@ export function SondagemReportImport({ onSaved }: SondagemReportImportProps) {
       }))
       setCards(initialCards)
 
-      // extração (mock) de cada sondagem em paralelo — real seria uma chamada
-      // por sondagem à IA de visão computacional, restrita ao intervalo de
-      // páginas detectado
-      await Promise.all(
-        initialCards.map(async (c) => {
-          const extraction = await mockExtractSondagem()
-          setCards((prev) => prev.map((card) => (card.key === c.key ? { ...card, extraction, extracting: false } : card)))
-        })
-      )
+      // sem leitura automática da tabela: camadas vêm do JSON (botão abaixo) ou digitadas
+      setCards((prev) => prev.map((c) => ({ ...c, extraction: extracaoVazia(), extracting: false })))
     } catch (err) {
       setDetectError(
         err instanceof Error ? `Erro ao ler o PDF: ${err.message}` : 'Erro ao ler o PDF — tente outro arquivo.'
@@ -119,14 +117,51 @@ export function SondagemReportImport({ onSaved }: SondagemReportImportProps) {
         pageEnd: lastPage,
         autoDetected: false,
         cotaTerreno: undefined,
-        extraction: null,
-        extracting: true,
+        extraction: extracaoVazia(),
+        extracting: false,
         saving: false,
         saved: false,
         message: null,
       },
     ])
-    mockExtractSondagem().then((extraction) => updateCard(key, { extraction, extracting: false }))
+  }
+
+  const handleJson = async (jsonFile: File | null) => {
+    if (!jsonFile) return
+    const { furos, erros } = parseSondagemJson(await jsonFile.text())
+    if (erros.length) {
+      setDetectError(erros.join(' '))
+      return
+    }
+    setDetectError(null)
+    const norm = (t: string) => t.toLowerCase().replace(/[^a-z0-9]/g, '')
+    setCards((prev) => {
+      const next = [...prev]
+      furos.forEach((f, i) => {
+        const patch = {
+          extraction: f.extraction,
+          extracting: false,
+          saved: false,
+          message: f.avisos.length ? f.avisos.join(' ') : null,
+        }
+        const idx = next.findIndex((c) => norm(c.identifier) === norm(f.identifier))
+        if (idx >= 0) {
+          next[idx] = { ...next[idx], ...patch, cotaTerreno: f.cotaBoca ?? next[idx].cotaTerreno }
+        } else {
+          next.push({
+            key: `json-${Date.now()}-${i}`,
+            identifier: f.identifier,
+            pageStart: f.pagina ?? 1,
+            pageEnd: f.pagina ?? 1,
+            autoDetected: true,
+            cotaTerreno: f.cotaBoca ?? undefined,
+            saving: false,
+            ...patch,
+          })
+        }
+      })
+      return next
+    })
   }
 
   const handleRemoveCard = (key: string) => setCards((prev) => prev.filter((c) => c.key !== key))
@@ -165,8 +200,9 @@ export function SondagemReportImport({ onSaved }: SondagemReportImportProps) {
         <span>
           A identificação de quantas sondagens existem no PDF e quais páginas pertencem a cada uma já é real (lê o
           texto de cada página em busca do cabeçalho do furo — uma sondagem sem cabeçalho novo numa página é tratada
-          como continuação da anterior, cobrindo o caso dela estar dividida em duas folhas). A leitura da TABELA de
-          camadas de cada sondagem continua simulada (mock) — confira e ajuste os dados de cada card antes de salvar.
+          como continuação da anterior, cobrindo o caso dela estar dividida em duas folhas). A TABELA de camadas não é
+          lida automaticamente: gere o JSON miso-spt no Claude Chat e use "Importar JSON" (ou digite as camadas).
+          Confira cada card contra o PDF antes de salvar.
           PDFs escaneados como imagem (sem texto) não têm cabeçalho detectável; ajuste os intervalos de página
           manualmente nesse caso.
         </span>
@@ -223,6 +259,20 @@ export function SondagemReportImport({ onSaved }: SondagemReportImportProps) {
         {detecting && <Loader2 size={14} className="animate-spin" />}
         {detecting ? 'Detectando sondagens...' : 'Detectar sondagens'}
       </button>
+
+      <label className="mb-3 ml-2 inline-flex cursor-pointer items-center gap-2 rounded-md border border-border bg-elevated px-3 py-2 text-sm text-text-primary hover:border-brand">
+        <FileJson size={14} />
+        Importar JSON (miso-spt)
+        <input
+          type="file"
+          accept="application/json,.json"
+          className="hidden"
+          onChange={(e) => {
+            handleJson(e.target.files?.[0] ?? null)
+            e.target.value = ''
+          }}
+        />
+      </label>
 
       {detectError && <div className="mb-3 text-xs text-accent-red">{detectError}</div>}
 
