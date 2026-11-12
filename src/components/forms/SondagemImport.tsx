@@ -110,11 +110,14 @@ export function SondagemImport({ toeElevation, onImport, onClose }: SondagemImpo
     }
   }
 
-  const canImport = result && collarElevation != null && toeElevation != null
+  // sem cota do pé definida na Geometria, usa a cota da boca do furo como referência (pé = boca:
+  // terreno natural plano no furo) — as camadas ficam em y = -profundidade
+  const toeEfetivo = toeElevation ?? collarElevation
+  const canImport = result && collarElevation != null && toeEfetivo != null
 
   const handleImport = () => {
-    if (!result || collarElevation == null || toeElevation == null) return
-    const layers = convertSondagemToLayers(result.layers, collarElevation, toeElevation)
+    if (!result || collarElevation == null || toeEfetivo == null) return
+    const layers = convertSondagemToLayers(result.layers, collarElevation, toeEfetivo)
     onImport(layers, result.water_table_depth)
     onClose()
   }
@@ -163,8 +166,9 @@ export function SondagemImport({ toeElevation, onImport, onClose }: SondagemImpo
 
       {toeElevation == null && (
         <div className="mb-3 text-xs text-accent-amber">
-          Defina a cota do pé/plataforma na aba Geometria (aterro: "Cota do pé do talude"; corte: "Cota da
-          plataforma de corte") para poder converter as profundidades do furo em posição dentro do talude.
+          Cota do pé/plataforma não definida na aba Geometria: as camadas serão posicionadas com o pé do talude na
+          mesma cota da boca do furo (profundidade do furo = -y). Se o pé estiver em outra cota (aterro: "Cota do
+          pé do talude"; corte: "Cota da plataforma de corte"), defina-a na aba Geometria antes de importar.
         </div>
       )}
 
