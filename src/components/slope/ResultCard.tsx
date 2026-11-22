@@ -1,4 +1,5 @@
 import type { AnalysisResult } from '../../engine/types'
+import { NOME_CONDICAO } from '../../engine/comportamento'
 import type { PartialFS } from '../../engine/fsDecomposition'
 
 interface ResultCardProps {
@@ -83,9 +84,7 @@ export function ResultCard({ result, source = 'search', partialFS }: ResultCardP
         <div>
           Condição:{' '}
           <span className="font-medium text-text-primary">
-            {result.condition === 'undrained'
-              ? 'Não drenada (fim de construção, c = su, φ = 0)'
-              : "Drenada (longo prazo, c', φ' e poropressão)"}
+            {NOME_CONDICAO[result.condition ?? 'drained']}
           </span>
         </div>
         {(result.surcharge_q ?? 0) > 0 && (

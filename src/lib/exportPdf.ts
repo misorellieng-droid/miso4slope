@@ -14,6 +14,7 @@ import type {
   FillZone,
   Layer,
   Point,
+  ResultadoTranslacional,
   SlopeGeometry,
   StabilityMethod,
 } from '../engine/types'
@@ -36,6 +37,7 @@ export interface ReportData {
   fillReference: CompactionReference | null
   result: AnalysisResult
   partialFS: PartialFS | null
+  translacional?: ResultadoTranslacional | null // verificação de ruptura translacional, quando ativa
   svgElement: SVGSVGElement | null
   bounds: CanvasBounds | null
 }
@@ -308,6 +310,133 @@ function drawLayerPanel(doc: jsPDF, items: PanelItem[], x: number, y: number, wi
   return cy
 }
 
+const NOME_PLANO = {
+  casca: 'Casca paralela à face',
+  camada: 'Base de camada',
+  terreno_natural: 'Contato aterro / terreno natural',
+} as const
+
+const fmtM = (m: number) => (m > 1 ? '> 1' : m < 0 ? 'rompe seco' : fmt(m, 2))
+
+/** Página da verificação de ruptura translacional (talude infinito). */
+function desenharTranslacional(doc: jsPDF, r: ResultadoTranslacional, geometry: SlopeGeometry, margin: number) {
+  const cfg = geometry.translacional!
+  doc.addPage()
+  let y = margin
+  doc.setFontSize(13)
+  doc.setFont('helvetica', 'bold')
+  doc.text('Ruptura translacional (talude infinito)', margin, y)
+  y += 6
+
+  doc.setFontSize(8.5)
+  doc.setFont('helvetica', 'normal')
+  doc.setTextColor(90, 90, 90)
+  const intro = doc.splitTextToSize(
+    'Camada rasa que escorrega paralela à superfície sobre um plano imposto pela estratigrafia. ' +
+      "FS = [c' + (gamma.z.cos²beta - u).tan phi'] / (gamma.z.sen beta.cos beta), com u = m.gamma_w.z.cos²beta " +
+      '(fluxo paralelo à encosta ocupando a fração m da espessura). Verificação independente da análise de conjunto.',
+    182
+  )
+  doc.text(intro, margin, y)
+  y += intro.length * 3.8 + 3
+  doc.setTextColor(0, 0, 0)
+
+  const c = r.critico
+  if (c) {
+    const cor: [number, number, number] = c.adequado ? [22, 163, 74] : c.fs_projeto >= 1 ? [202, 138, 4] : [220, 38, 38]
+    doc.setFontSize(16)
+    doc.setFont('helvetica', 'bold')
+    doc.setTextColor(...cor)
+    doc.text(`FS = ${c.fs_projeto.toFixed(3)}`, margin, y + 5)
+    doc.setFontSize(10)
+    doc.text(
+      `${c.adequado ? 'ADEQUADO' : 'INADEQUADO'} no cenário de verificação (m = ${fmt(r.m_projeto, 2)}, FSmín = ${fmt(r.fs_min, 2)})`,
+      margin,
+      y + 11
+    )
+    doc.setTextColor(0, 0, 0)
+    doc.setFont('helvetica', 'normal')
+    doc.text(
+      `Trecho crítico: x ${fmt(c.x0, 1)} a ${fmt(c.x1, 1)} m · z = ${fmt(c.z_critico)} m · beta = ${fmt(c.beta_plano, 1)}° · ` +
+        `m crítico = ${fmtM(c.m_critico)} · beta máx. = ${c.beta_max != null ? `${fmt(c.beta_max, 1)}°` : 'nenhum'}`,
+      margin,
+      y + 17
+    )
+    y += 24
+  }
+
+  doc.setFontSize(10)
+  doc.setFont('helvetica', 'bold')
+  doc.text('Hipóteses', margin, y)
+  y += 2
+  const plano =
+    cfg.plano.tipo === 'casca'
+      ? `${NOME_PLANO.casca}, espessura ${fmt(cfg.plano.espessura)} m`
+      : cfg.plano.tipo === 'camada'
+        ? `${NOME_PLANO.camada} nº ${cfg.plano.indice + 1}`
+        : NOME_PLANO.terreno_natural
+  autoTable(doc, {
+    startY: y,
+    margin: { left: margin, right: margin },
+    theme: 'grid',
+    styles: { fontSize: 8, cellPadding: 1.5 },
+    head: [['Parâmetro', 'Valor']],
+    body: [
+      ['Plano de ruptura', plano],
+      [
+        'Resistência no plano',
+        cfg.usar_parametros_proprios
+          ? `c' = ${fmt(cfg.c_plano)} kPa · phi' = ${fmt(cfg.phi_plano, 1)}° · gamma = ${fmt(cfg.gamma, 1)} kN/m³ (informados)`
+          : "Do material logo acima do plano; gamma médio da camada",
+      ],
+      ['Sucção em tempo seco', cfg.succao > 0 ? `${fmt(cfg.succao, 1)} kPa, phi_b = ${fmt(cfg.phi_b, 1)}°` : 'Não considerada'],
+      ['m intermediário / de verificação', `${fmt(cfg.m_parcial, 2)} / ${fmt(cfg.m_projeto, 2)}`],
+      ['Peso específico da água', `${fmt(r.gamma_w)} kN/m³`],
+      ['Trechos ignorados', `inclinação menor que ${fmt(cfg.beta_min, 1)}°`],
+    ],
+  })
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  y = (doc as any).lastAutoTable.finalY + 6
+
+  if (r.trechos.length > 0) {
+    doc.setFont('helvetica', 'bold')
+    doc.text('FS por trecho e cenário de água', margin, y)
+    y += 2
+    const cenarios = r.trechos[0].cenarios.map((cen) => pdfSafe(cen.nome))
+    autoTable(doc, {
+      startY: y,
+      margin: { left: margin, right: margin },
+      theme: 'grid',
+      styles: { fontSize: 7.5, cellPadding: 1.2 },
+      head: [['Trecho x (m)', 'beta (°)', 'z (m)', 'Material', ...cenarios, 'Verif.', 'm crít.']],
+      body: r.trechos.map((t) => [
+        `${fmt(t.x0, 1)} a ${fmt(t.x1, 1)}${t.nao_paralelo ? ' *' : ''}`,
+        fmt(t.beta_plano, 1),
+        Math.abs(t.z_max - t.z_min) < 0.05 ? fmt(t.z_min) : `${fmt(t.z_min, 1)} a ${fmt(t.z_max, 1)}`,
+        pdfSafe(t.material),
+        ...t.cenarios.map((cen) => fmt(cen.FS, 2)),
+        fmt(t.fs_projeto, 2),
+        fmtM(t.m_critico),
+      ]),
+    })
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    y = (doc as any).lastAutoTable.finalY + 4
+  }
+
+  doc.setFontSize(8)
+  doc.setFont('helvetica', 'normal')
+  const notas = [
+    '* superfície e plano com mais de 5° de diferença: talude infinito aproximado.',
+    'm crítico: fração de água que leva o FS a 1,0. beta máx.: inclinação que atende o FS mínimo com a mesma camada e água.',
+    ...r.avisos,
+  ]
+  for (const n of notas) {
+    const lines = doc.splitTextToSize(n.normalize('NFD').replace(/[̀-ͯ]/g, ''), 182)
+    doc.text(lines, margin, y)
+    y += lines.length * 3.6
+  }
+}
+
 export async function exportReportToPdf(data: ReportData, fileName = 'miso4slope-relatorio.pdf'): Promise<void> {
   const { header, mode, method, geometry, layers, fill, fillZones, result, partialFS, svgElement, bounds } = data
   const terrain = effectiveNaturalTerrain(geometry, mode)
@@ -504,6 +633,10 @@ export async function exportReportToPdf(data: ReportData, fileName = 'miso4slope
         body: fillZones.map((z) => [z.name, fmt(z.thickness), fmt(z.compaction_degree), fmt(z.c), fmt(z.phi), fmt(z.gamma)]),
       })
     }
+  }
+
+  if (data.translacional && geometry.translacional?.ativa) {
+    desenharTranslacional(doc, data.translacional, geometry, margin)
   }
 
   // tabela de fatias

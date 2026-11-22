@@ -79,7 +79,7 @@ function groundLevelAt(x: number, terrain?: Point[]): number {
  * em vez de assumir (sem base) que a mesma profundidade se repete em todo
  * o perfil, acompanhando a topografia.
  */
-function effectiveBounds(layer: Layer, x: number, terrain: Point[] | undefined): { top: number; base: number } {
+export function effectiveBounds(layer: Layer, x: number, terrain: Point[] | undefined): { top: number; base: number } {
   const groundLevel = layerReferenceGround(layer, x, terrain)
   const top = layer.depth_top != null ? groundLevel - layer.depth_top : layer.y_top ?? -Infinity
   const base = layer.depth_base != null ? groundLevel - layer.depth_base : layer.y_base ?? Infinity

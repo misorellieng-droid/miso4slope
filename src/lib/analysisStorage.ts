@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { migrarAnalise } from '../engine/comportamento'
 import type {
   AnalysisMode,
   AnalysisResult,
@@ -129,9 +130,10 @@ export async function loadAnalysis(id: string): Promise<AnalysisSnapshot> {
   const { data, error } = await supabase.from('analises').select('*').eq('id', id).single()
   if (error) throw error
 
+  const migrada = migrarAnalise(data.geometry, data.layers)
   return {
-    geometry: data.geometry,
-    layers: data.layers,
+    geometry: migrada.geometry,
+    layers: migrada.layers,
     fill: data.fill,
     coverage: data.coverage,
     fillReference: data.fill_reference,

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Calculator, FileDown, FolderOpen, Loader2, Pencil, Play, Save, Trash2 } from 'lucide-react'
 import { usePersistedState } from '../lib/persist'
@@ -18,8 +18,13 @@ import { ResultCard } from '../components/slope/ResultCard'
 import { SlicesTable } from '../components/slope/SlicesTable'
 import { ZonaFundacaoForm } from '../components/forms/ZonaFundacaoForm'
 import { ZonaTratadaPanel } from '../components/slope/ZonaTratadaPanel'
+import { TranslacionalForm } from '../components/forms/TranslacionalForm'
+import { TranslacionalPanel } from '../components/slope/TranslacionalPanel'
+import { analisarTranslacional } from '../engine/translacional'
+import { resolveFillZones } from '../engine/soil'
 import { xCristaMotor } from '../engine/zonaFundacao'
 import { bishopFS } from '../engine/bishop'
+import { comportamentoDe, migrarAnalise, temPhiAbaixoDoNA } from '../engine/comportamento'
 import { felleniusFS } from '../engine/fellenius'
 import { findCriticalCircle, type SearchProgress } from '../engine/search'
 import { computePartialFS, type PartialFS } from '../engine/fsDecomposition'
@@ -69,17 +74,19 @@ const DEFAULT_FILL: FillMaterial = { c: 8, phi: 25, gamma: 18 }
 // talude sempre terá revestimento vegetal em projeto — grama como padrão realista
 const DEFAULT_COVERAGE: FaceCoverage = { type: 'grass', depth: 1.5 }
 
-type Tab = 'geometria' | 'solo' | 'aterro'
+type Tab = 'geometria' | 'solo' | 'aterro' | 'translacional'
 
 const TABS_ATERRO: { id: Tab; label: string }[] = [
   { id: 'geometria', label: 'Geometria' },
   { id: 'solo', label: 'Solo / Fundação' },
   { id: 'aterro', label: 'Aterro' },
+  { id: 'translacional', label: 'Translacional' },
 ]
 
 const TABS_CORTE: { id: Tab; label: string }[] = [
   { id: 'geometria', label: 'Geometria' },
   { id: 'solo', label: 'Solo / Camadas' },
+  { id: 'translacional', label: 'Translacional' },
 ]
 
 const STORAGE_PREFIX = 'miso4slope:analise:'
@@ -118,6 +125,20 @@ export function AnalysisPage() {
   const [mode, setMode] = usePersistedState<AnalysisMode>(STORAGE_PREFIX + 'mode', 'aterro')
 
   const TABS = mode === 'corte' ? TABS_CORTE : TABS_ATERRO
+  // migra análises salvas no formato antigo (condição global) para comportamento por camada
+  useEffect(() => {
+    const m = migrarAnalise(geometry, layers)
+    if (!m.migrou) return
+    setLayers(m.layers)
+    setGeometry(m.geometry)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const semNA =
+    !Number.isFinite(geometry.water_table_depth) &&
+    !((geometry.ru ?? 0) > 0) &&
+    layers.some((l) => comportamentoDe(l, geometry.analysis_condition) === 'drenado' && l.phi > 0)
+
   const effectiveFill = mode === 'aterro' ? fill : null
   const effectiveFillZones = mode === 'aterro' ? fillZones : undefined
 
@@ -125,6 +146,14 @@ export function AnalysisPage() {
   const geoCalc: SlopeGeometry =
     mode === 'corte' && geometry.zona_fundacao ? { ...geometry, zona_fundacao: undefined } : geometry
   const zonaAtiva = mode === 'aterro' && !!geometry.zona_fundacao?.ativa
+
+  // ruptura translacional: cálculo direto (sem busca), refeito a cada mudança de entrada
+  const resultadoTranslacional = useMemo(() => {
+    const cfg = geoCalc.translacional
+    if (!cfg?.ativa) return null
+    const zonas = effectiveFillZones?.length ? resolveFillZones(effectiveFillZones, geoCalc.total_height) : undefined
+    return analisarTranslacional(geoCalc, mode, layers, effectiveFill, zonas, cfg)
+  }, [geoCalc, mode, layers, effectiveFill, effectiveFillZones])
 
   const setModeSafe = (m: AnalysisMode) => {
     setMode(m)
@@ -372,6 +401,7 @@ export function AnalysisPage() {
         fillReference,
         result,
         partialFS,
+        translacional: resultadoTranslacional,
         svgElement: canvasRef.current?.svg ?? null,
         bounds: canvasRef.current?.bounds ?? null,
       })
@@ -528,6 +558,34 @@ export function AnalysisPage() {
         </div>
       )}
 
+      {geometry.comportamento_migrado && temPhiAbaixoDoNA(layers, geometry) && (
+        <div className="rounded-lg border border-accent-amber bg-surface p-3 text-sm text-text-primary">
+          <p>
+            Esta análise foi salva no formato antigo e calculada sem poropressão em todo o perfil. Há camada com φ &gt; 0 abaixo
+            do N.A.; o atrito pode estar superestimado. Os números salvos foram preservados. Recalcule para conferir.
+          </p>
+          <div className="mt-2 flex gap-3 text-xs">
+            <button
+              className="rounded-md border border-brand px-2 py-1 text-brand"
+              onClick={() => {
+                setLayers(layers.map((l) => (l.comportamento === 'nao_drenado' && l.phi > 0 ? { ...l, comportamento: 'drenado' } : l)))
+                setGeometry({ ...geometry, comportamento_migrado: undefined })
+              }}
+            >
+              Marcar camadas com φ &gt; 0 como drenadas
+            </button>
+            <button className="text-text-secondary hover:underline" onClick={() => setGeometry({ ...geometry, comportamento_migrado: undefined })}>
+              Dispensar aviso
+            </button>
+          </div>
+        </div>
+      )}
+      {semNA && (
+        <div className="rounded-lg border border-accent-amber bg-surface p-3 text-sm text-text-primary">
+          N.A. não informado: camadas drenadas ficam sem poropressão. Informe a profundidade do N.A. ou o ru.
+        </div>
+      )}
+
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* coluna esquerda: inputs */}
         <div className="space-y-4">
@@ -549,6 +607,14 @@ export function AnalysisPage() {
             </div>
 
             {tab === 'geometria' && <GeometryForm value={geometry} onChange={setGeometry} mode={mode} />}
+            {tab === 'translacional' && (
+              <TranslacionalForm
+                value={geometry.translacional}
+                onChange={(translacional) => setGeometry({ ...geometry, translacional })}
+                layers={layers}
+                mode={mode}
+              />
+            )}
             {tab === 'solo' && (
               <div className="space-y-3">
                 {!showSondagemImport && (
@@ -582,7 +648,7 @@ export function AnalysisPage() {
                     }}
                   />
                 )}
-                <SoilLayerTable value={layers} onChange={setLayers} />
+                <SoilLayerTable value={layers} onChange={setLayers} geometry={geometry} />
                 {mode === 'aterro' && (
                   <ZonaFundacaoForm
                     value={geometry.zona_fundacao}
@@ -711,8 +777,16 @@ export function AnalysisPage() {
 
         {/* coluna direita: visualização */}
         <div className="space-y-4">
-          <SlopeCanvas ref={canvasRef} geometry={geometry} layers={layers} result={result} mode={mode} />
+          <SlopeCanvas
+            ref={canvasRef}
+            geometry={geometry}
+            layers={layers}
+            result={result}
+            mode={mode}
+            translacional={resultadoTranslacional}
+          />
           <ResultCard result={result} source={resultSource} partialFS={partialFS} />
+          <TranslacionalPanel resultado={resultadoTranslacional} />
           {zonaAtiva && geometry.zona_fundacao && (
             <ZonaTratadaPanel
               entrada={{ geo: geometry, layers, fill: effectiveFill, coverage, fillZones: effectiveFillZones, nSlices, method }}

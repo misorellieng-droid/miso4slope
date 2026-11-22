@@ -1,6 +1,7 @@
 import { forwardRef, useImperativeHandle, useMemo, useRef } from 'react'
 import { buildProfile, effectiveNaturalTerrain, groundY, layerReferenceGround, type Point } from '../../engine/geometry'
-import type { AnalysisMode, AnalysisResult, Layer, SlopeGeometry } from '../../engine/types'
+import type { AnalysisMode, AnalysisResult, Layer, ResultadoTranslacional, SlopeGeometry } from '../../engine/types'
+import { corFsTranslacional } from './TranslacionalPanel'
 import { camadaTratada, espessuraCamada, xLimUsuario } from '../../engine/zonaFundacao'
 
 interface SlopeCanvasProps {
@@ -11,6 +12,7 @@ interface SlopeCanvasProps {
   showSlices?: boolean
   showGrid?: boolean
   highlightLayer?: number
+  translacional?: ResultadoTranslacional | null // fatias da verificação translacional, coloridas pelo FS
 }
 
 export interface CanvasBounds {
@@ -111,7 +113,7 @@ function layerBoundaryY(layer: Layer, x: number, terrain: Point[] | undefined): 
 }
 
 export const SlopeCanvas = forwardRef<SlopeCanvasHandle, SlopeCanvasProps>(function SlopeCanvas(
-  { geometry, layers, result, mode = 'aterro', showSlices = true, showGrid = true, highlightLayer },
+  { geometry, layers, result, mode = 'aterro', showSlices = true, showGrid = true, highlightLayer, translacional },
   handleRef
 ) {
   const svgElRef = useRef<SVGSVGElement>(null)
@@ -145,6 +147,16 @@ export const SlopeCanvas = forwardRef<SlopeCanvasHandle, SlopeCanvasProps>(funct
       yMax = Math.max(yMax, result.circle.yc)
     }
 
+    // trechos da translacional fora do talude (encosta natural antes do pé) entram no enquadramento
+    for (const t of translacional?.trechos ?? []) {
+      xMin = Math.min(xMin, t.x0)
+      xMax = Math.max(xMax, t.x1)
+      for (const p of t.pontos) {
+        yMin = Math.min(yMin, p.y_plano)
+        yMax = Math.max(yMax, p.y_sup)
+      }
+    }
+
     const marginLeft = layers.length > 0 ? MARGIN_X_WITH_LABELS : MARGIN_X
 
     return {
@@ -153,7 +165,7 @@ export const SlopeCanvas = forwardRef<SlopeCanvasHandle, SlopeCanvasProps>(funct
       yMin: yMin - MARGIN_Y,
       yMax: yMax + MARGIN_Y,
     }
-  }, [profile, layers, waterY, result, toeIndex, crestIndex, refTerrain])
+  }, [profile, layers, waterY, result, toeIndex, crestIndex, refTerrain, translacional])
 
   const { xMin, xMax, yMin, yMax } = bounds
   const width = xMax - xMin
@@ -527,6 +539,21 @@ export const SlopeCanvas = forwardRef<SlopeCanvasHandle, SlopeCanvasProps>(funct
               opacity={0.55}
             />
           ))}
+
+          {/* ruptura translacional: fatia entre a superfície e o plano, colorida pelo FS
+              do cenário de verificação; o plano em traço contínuo, mais grosso no trecho crítico */}
+          {translacional?.trechos.map((t) => {
+            const cor = corFsTranslacional(t.fs_projeto, translacional.fs_min)
+            const sup = t.pontos.map((p) => ({ x: p.x, y: p.y_sup }))
+            const plano = t.pontos.map((p) => ({ x: p.x, y: p.y_plano }))
+            const critico = t === translacional.critico
+            return (
+              <g key={`tr-${t.indice}`}>
+                <polygon points={toPath([...sup, ...plano.slice().reverse()])} fill={cor} opacity={0.35} />
+                <polyline points={toPath(plano)} fill="none" stroke={cor} strokeWidth={critico ? 0.45 : 0.25} />
+              </g>
+            )
+          })}
 
           {/* círculo crítico */}
           {result && (

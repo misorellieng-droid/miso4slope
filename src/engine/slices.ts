@@ -1,5 +1,6 @@
 import { buildProfile, effectiveNaturalTerrain, groundY } from './geometry'
 import { avgSoil, profileBaseAt, resolveFillZones, splitHeightByGround } from './soil'
+import { comportamentoDe } from './comportamento'
 import { camadaTratada, camadasEfetivas, paramsNoPonto, xLimUsuario } from './zonaFundacao'
 import type {
   AnalysisMode,
@@ -165,7 +166,9 @@ export function buildRawSlices(
 ): BuiltSlices | null {
   const mode: AnalysisMode = fill == null ? 'corte' : 'aterro'
   const profile = buildProfile(geo, mode)
-  const undrained = geo.analysis_condition === 'undrained'
+  const efetivas = camadasEfetivas(layers, geo.zona_fundacao)
+  const naoDrenadoPorChave = (key: string) =>
+    key.startsWith('layer:') && comportamentoDe(efetivas[Number(key.slice(6))], geo.analysis_condition) === 'nao_drenado'
   const q = geo.surcharge_q ?? 0
   const range = surchargeRange(geo, profile)
   const surcharge: SurchargeSpec | undefined = q > 0 ? { q, ...range } : undefined
@@ -174,12 +177,12 @@ export function buildRawSlices(
     surcharge,
     improvement: geo.improvement,
     minArcWidth: geo.min_arc_width,
-    undrained,
-    ru: !undrained && (geo.ru ?? 0) > 0 ? geo.ru : undefined,
+    naoDrenadoPorChave,
+    ru: (geo.ru ?? 0) > 0 ? geo.ru : undefined,
     refTerrain: effectiveNaturalTerrain(geo, mode),
     waterY: -geo.water_table_depth,
     gammaWater: geo.gamma_water ?? 9.81,
-    layers: camadasEfetivas(layers, geo.zona_fundacao),
+    layers: efetivas,
     zonaFundacao: geo.zona_fundacao?.ativa
       ? { zf: geo.zona_fundacao, xCrista: profile[profile.length - 2].x }
       : undefined,
@@ -208,7 +211,8 @@ export interface SliceSetup {
   surcharge?: SurchargeSpec
   improvement?: ImprovementStrip[]
   minArcWidth?: number
-  undrained?: boolean // sem poropressão (tensões totais, c = su e φ = 0)
+  undrained?: boolean // sem poropressão em todo o perfil (global; usado pelos muros)
+  naoDrenadoPorChave?: (sourceKey: string) => boolean // por camada ('layer:<i>'): sem poropressão nas fatias dessa camada
   ru?: number         // razão de poropressão: u = ru·γh, substitui o N.A.
   // fundação em duas zonas: xCrista = x da crista no referencial do motor (pé = 0)
   zonaFundacao?: { zf: ZonaFundacao; xCrista: number }
@@ -216,7 +220,7 @@ export interface SliceSetup {
 
 export function buildRawSlicesOnProfile(circle: CircleParams, setup: SliceSetup): BuiltSlices | null {
   const { profile, refTerrain, waterY, gammaWater, layers, fill, coverage, resolvedFillZones, n_slices } = setup
-  const { surcharge, undrained, ru, improvement, minArcWidth } = setup
+  const { surcharge, undrained, naoDrenadoPorChave, ru, improvement, minArcWidth } = setup
   const range = findValidRange(circle, profile, Math.max(MIN_ARC_WIDTH, minArcWidth ?? 0))
   if (!range) return null
 
@@ -285,7 +289,7 @@ export function buildRawSlicesOnProfile(circle: CircleParams, setup: SliceSetup)
     const W_sobrecarga = surcharge
       ? surcharge.q * Math.max(0, Math.min(xm + b / 2, surcharge.x_end) - Math.max(xm - b / 2, surcharge.x_start))
       : 0
-    const u = undrained
+    const u = undrained || naoDrenadoPorChave?.(soil.sourceKey)
       ? 0
       : ru != null
         ? (ru * W) / b

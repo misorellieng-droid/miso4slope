@@ -1,5 +1,6 @@
 import { momentoReforcos, saiPelaFaceContida } from './reforco'
-import { comResumo } from './zonaFundacao'
+import { camadasEfetivas, comResumo } from './zonaFundacao'
+import { condicaoResultante } from './comportamento'
 import { buildRawSlices, MIN_VALID_SLICES, surchargeRange } from './slices'
 import type {
   AnalysisResult,
@@ -166,7 +167,7 @@ export function bishopFS(
     is_adequate: FS >= FS_MIN_NBR,
     fs_min_nbr: FS_MIN_NBR,
     method: 'bishop',
-    condition: geo.analysis_condition ?? 'drained',
+    condition: condicaoResultante(camadasEfetivas(layers, geo.zona_fundacao), geo.analysis_condition),
     surcharge_q: geo.surcharge_q ?? 0,
     surcharge_x_start: surchargeRange(geo).x_start,
     surcharge_x_end: surchargeRange(geo).x_end,

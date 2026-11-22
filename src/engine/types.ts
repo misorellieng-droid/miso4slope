@@ -16,6 +16,7 @@ export interface Layer {
   c: number            // coesão efetiva (kPa)
   phi: number           // ângulo de atrito efetivo (graus)
   gamma: number        // peso específico (kN/m³)
+  comportamento?: 'nao_drenado' | 'drenado' // nao_drenado: c = su, sem poropressão; drenado: c', φ' e poropressão. Ausente (formato antigo) = herda a condição global
   n_spt?: number       // N_SPT de referência (golpes), se c/phi/gamma vieram de correlação
   soil_class?: SoilClass // granular ou coesivo, usado na correlação a partir do N_SPT
   depth_top?: number   // profundidade do topo abaixo do terreno natural local (m) — se definido, tem prioridade sobre y_top
@@ -92,13 +93,93 @@ export interface SlopeGeometry {
   reinforcement?: ReinforcementLayer[] // geossintéticos horizontais (colchão sobre colunas ou na base do aterro)
   surcharge_q?: number       // sobrecarga uniforme na plataforma (kPa); 0/indefinido = sem sobrecarga
   surcharge_width?: number   // extensão carregada a partir da crista (m); indefinido = toda a plataforma
-  analysis_condition?: AnalysisCondition // padrão: 'drained' (comportamento original)
+  analysis_condition?: AnalysisCondition // padrão das camadas novas (e das antigas sem 'comportamento'); padrão: 'drained'
+  comportamento_migrado?: boolean // análise migrada do formato global: mostra banner de recálculo
   ru?: number                // razão de poropressão (u/γh), só na condição drenada; > 0 substitui o N.A.
   zona_fundacao?: ZonaFundacao // fundação em duas zonas: A (tratada, dentro do terreno) e B (natural, fora)
   natural_terrain?: Point[]  // perfil real do terreno natural (x,y relativos ao pé=0,0), substitui o
                               // trecho plano padrão e serve de referência de profundidade para camadas
                               // com depth_top/depth_base (aterro/fundação separados por essa superfície,
                               // não mais por y=0)
+  translacional?: ConfigTranslacional // verificação de ruptura translacional (talude infinito)
+}
+
+// ─── Ruptura translacional (talude infinito) ────────────────────────────────
+// Fatia rasa que escorrega paralela à superfície sobre um plano imposto pela
+// estratigrafia. Verificação independente da análise de conjunto (Bishop).
+
+// Onde fica o plano de ruptura:
+// - casca: a uma espessura vertical fixa abaixo da superfície do perfil
+//   (saia do aterro mal compactada, camada alterada da face do corte);
+// - camada: na base de uma camada cadastrada (colúvio/residual, solo/rocha);
+// - terreno_natural: no contato aterro/terreno natural (aterro sobre encosta).
+export type PlanoTranslacional =
+  | { tipo: 'casca'; espessura: number }
+  | { tipo: 'camada'; indice: number }
+  | { tipo: 'terreno_natural' }
+
+export interface ConfigTranslacional {
+  ativa: boolean
+  plano: PlanoTranslacional
+  usar_parametros_proprios: boolean // true: c_plano/phi_plano/gamma abaixo; false: do material logo acima do plano
+  c_plano: number        // c' no plano de ruptura (kPa)
+  phi_plano: number      // φ' no plano de ruptura (graus)
+  gamma: number          // γ da camada que desliza (kN/m³)
+  succao: number         // sucção ua − uw em tempo seco (kPa); 0 = não considerar
+  phi_b: number          // φᵇ (graus), parcela da sucção
+  m_parcial: number      // fração da espessura com água no cenário intermediário (0 a 1)
+  m_projeto: number      // fração com água no cenário de verificação (0 a 1)
+  beta_min: number       // trechos do perfil menos inclinados que isso são ignorados (graus)
+  fs_min: number         // FS mínimo exigido no cenário de verificação
+}
+
+export interface CenarioTranslacional {
+  nome: string
+  m: number
+  succao: number
+  FS: number             // menor FS do trecho nesse cenário
+}
+
+export interface PontoTranslacional {
+  x: number
+  y_sup: number          // superfície do terreno/talude
+  y_plano: number        // plano de ruptura
+  z: number              // espessura vertical (m)
+  beta_plano: number     // inclinação do plano (graus)
+  fs_projeto: number
+}
+
+export interface TrechoTranslacional {
+  indice: number         // posição do trecho no perfil (0, 1, 2…, do primeiro ao último inclinado)
+  x0: number
+  x1: number
+  beta_sup: number       // inclinação da superfície (graus)
+  beta_plano: number     // inclinação média do plano (graus)
+  z_min: number
+  z_max: number
+  material: string       // material da camada que desliza (no ponto crítico)
+  c: number              // c' usado no plano (ponto crítico)
+  phi: number            // φ' usado no plano (ponto crítico)
+  gamma: number          // γ usado (ponto crítico)
+  cenarios: CenarioTranslacional[]
+  fs_projeto: number     // menor FS no cenário de verificação (m_projeto, sem sucção)
+  x_critico: number
+  z_critico: number      // z no ponto crítico
+  m_critico: number      // fração de água que leva o FS a 1,0 no ponto crítico (sem sucção)
+  z_limite: number | null // espessura acima da qual a camada seca, sem sucção, rompe (só se β > φ')
+  beta_max: number | null // inclinação máxima com FS ≥ fs_min no cenário de verificação (ponto crítico)
+  adequado: boolean
+  nao_paralelo: boolean  // superfície e plano diferem mais de 5°: talude infinito é aproximado
+  pontos: PontoTranslacional[]
+}
+
+export interface ResultadoTranslacional {
+  trechos: TrechoTranslacional[]
+  critico: TrechoTranslacional | null
+  fs_min: number
+  m_projeto: number
+  gamma_w: number
+  avisos: string[]
 }
 
 // Fundação em duas zonas. Referencial do usuário (≠ do motor): x = 0 na borda
@@ -243,7 +324,7 @@ export interface AnalysisResult {
   is_adequate: boolean         // FS >= fs_min_nbr (1.5)
   fs_min_nbr: number           // critério NBR 11682
   method: StabilityMethod
-  condition?: AnalysisCondition
+  condition?: AnalysisCondition | 'mixed' // 'mixed' = camadas com comportamentos diferentes
   surcharge_q?: number
   surcharge_x_start?: number
   surcharge_x_end?: number

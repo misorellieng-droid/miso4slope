@@ -91,29 +91,26 @@ export function GeometryForm({ value, onChange, mode }: GeometryFormProps) {
         </div>
         <div className="grid grid-cols-2 gap-3">
           <label className="col-span-2 flex flex-col gap-1">
-            <span className="text-xs text-text-secondary">Condição</span>
+            <span className="text-xs text-text-secondary">Condição (define o padrão das camadas novas)</span>
             <select
               value={value.analysis_condition ?? 'drained'}
               onChange={(e) => onChange({ ...value, analysis_condition: e.target.value as AnalysisCondition })}
               className="rounded-md border border-border bg-elevated px-2 py-1.5 text-sm text-text-primary"
             >
-              <option value="drained">Drenada (longo prazo): c', φ' e poropressão</option>
-              <option value="undrained">Não drenada (fim de construção): c = su, φ = 0, sem poropressão</option>
+              <option value="drained">Longo prazo: todas as camadas drenadas (c', φ' e poropressão)</option>
+              <option value="undrained">Fim de construção: argilas moles não drenadas (c = su), areias/aterro drenados</option>
             </select>
           </label>
-          {(value.analysis_condition ?? 'drained') === 'drained' ? (
-            <NumberField
+          <NumberField
               label="ru (opcional, substitui o N.A.)"
               value={value.ru ?? NaN}
               step={0.05}
               min={0}
               onChange={(v) => onChange({ ...value, ru: Number.isFinite(v) && v > 0 ? v : undefined })}
             />
-          ) : (
-            <p className="col-span-2 text-xs text-text-secondary">
-              Informe a argila mole com c = su e φ = 0 na aba de solo; a poropressão é desconsiderada em todo o perfil.
-            </p>
-          )}
+          <p className="col-span-2 text-xs text-text-secondary">
+            O comportamento (drenado ou não drenado) é definido camada por camada na aba de solo. A poropressão (N.A. ou ru) só atua nas camadas drenadas e no aterro.
+          </p>
         </div>
       </div>
 

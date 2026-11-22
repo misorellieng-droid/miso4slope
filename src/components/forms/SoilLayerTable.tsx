@@ -1,19 +1,21 @@
 import { Fragment, useState } from 'react'
 import { Plus, Trash2 } from 'lucide-react'
-import type { Layer, SoilClass } from '../../engine/types'
+import type { Layer, SlopeGeometry, SoilClass } from '../../engine/types'
+import { avisosCamada, comportamentoDe, comportamentoPadrao, TEXTO_AVISO, type Comportamento } from '../../engine/comportamento'
 import { estimateFromSPT } from '../../engine/spt'
 import { NumberField } from './NumberField'
 
 interface SoilLayerTableProps {
   value: Layer[]
   onChange: (value: Layer[]) => void
+  geometry: SlopeGeometry
 }
 
 const EMPTY_LAYER: Layer = { name: 'Nova camada', y_top: 0, y_base: -1, c: 0, phi: 30, gamma: 18 }
 
 const isDepthMode = (layer: Layer) => layer.depth_top != null || layer.depth_base != null
 
-export function SoilLayerTable({ value, onChange }: SoilLayerTableProps) {
+export function SoilLayerTable({ value, onChange, geometry }: SoilLayerTableProps) {
   // referência geral do furo — não é um dado por camada: é a mesma sondagem que
   // originou (potencialmente) várias camadas, então é preenchida uma única vez
   // aqui e aplicada a todas as camadas em modo "Prof. do terreno" de uma vez,
@@ -56,7 +58,11 @@ export function SoilLayerTable({ value, onChange }: SoilLayerTableProps) {
   }
 
   const remove = (index: number) => onChange(value.filter((_, i) => i !== index))
-  const add = () => onChange([...value, { ...EMPTY_LAYER, y_top: value.at(-1)?.y_base ?? 0 }])
+  const add = () =>
+    onChange([
+      ...value,
+      { ...EMPTY_LAYER, y_top: value.at(-1)?.y_base ?? 0, comportamento: comportamentoPadrao(geometry.analysis_condition, EMPTY_LAYER) },
+    ])
 
   return (
     <div className="space-y-3">
@@ -105,7 +111,8 @@ export function SoilLayerTable({ value, onChange }: SoilLayerTableProps) {
             <th className="pb-2">Base (m)</th>
             <th className="pb-2">N_SPT</th>
             <th className="pb-2">Tipo</th>
-            <th className="pb-2">c' (kPa)</th>
+            <th className="pb-2">Comportamento</th>
+            <th className="pb-2">c' / su (kPa)</th>
             <th className="pb-2">φ' (°)</th>
             <th className="pb-2">γ (kN/m³)</th>
             <th className="pb-2" />
@@ -175,6 +182,17 @@ export function SoilLayerTable({ value, onChange }: SoilLayerTableProps) {
                     <option value="coesivo">Coesivo</option>
                   </select>
                 </td>
+                <td className="py-1 pr-2">
+                  <select
+                    value={comportamentoDe(layer, geometry.analysis_condition)}
+                    onChange={(e) => update(i, { comportamento: e.target.value as Comportamento })}
+                    className="rounded bg-elevated px-2 py-1 font-sans text-text-primary focus:outline-none"
+                    title="Não drenado: c = su, sem poropressão. Drenado: c', φ' e poropressão (N.A. ou ru)."
+                  >
+                    <option value="nao_drenado">Não drenado</option>
+                    <option value="drenado">Drenado</option>
+                  </select>
+                </td>
                 {(['c', 'phi', 'gamma'] as const).map((field) => (
                   <td key={field} className="py-1 pr-2">
                     <input
@@ -199,9 +217,16 @@ export function SoilLayerTable({ value, onChange }: SoilLayerTableProps) {
                   </button>
                 </td>
               </tr>
+              {avisosCamada(layer, i, geometry).map((a) => (
+                <tr key={a}>
+                  <td colSpan={11} className="pb-1 pl-2 font-sans text-xs text-accent-amber">
+                    ⚠ {TEXTO_AVISO[a]}
+                  </td>
+                </tr>
+              ))}
               {(estimate || depthMode) && (
                 <tr>
-                  <td colSpan={10} className="pb-1 pl-2 font-sans text-xs text-brand">
+                  <td colSpan={11} className="pb-1 pl-2 font-sans text-xs text-brand">
                     {depthMode &&
                       (layer.sondagem_collar != null
                         ? `Medido a partir da cota do furo (${layer.sondagem_collar}m${layer.sondagem_x != null ? ` em x=${layer.sondagem_x}m` : ''}) — faixa reta, não acompanha o terreno. `
